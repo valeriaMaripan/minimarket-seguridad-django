@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Minimarket{% endblock %}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #f4f5f7; color: #1f2933; }
+    header { background: #1f3a5f; color: #fff; padding: .75rem 1.25rem; display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap; }
+    header a, header button { color: #fff; text-decoration: none; background: none; border: 0; font: inherit; cursor: pointer; }
+    header a:hover, header button:hover { text-decoration: underline; }
+    header .espacio { flex: 1; }
+    main { max-width: 960px; margin: 1.5rem auto; padding: 0 1rem; }
+    table { width: 100%; border-collapse: collapse; background: #fff; }
+    th, td { padding: .6rem .75rem; text-align: left; border-bottom: 1px solid #e4e7eb; }
+    th { background: #e9edf2; }
+    .badge { padding: .15rem .5rem; border-radius: 999px; font-size: .85rem; }
+    .VIGENTE { background: #d7f5dd; color: #14532d; }
+    .POR_VENCER { background: #fdecc8; color: #7a4b00; }
+    .VENCIDO { background: #fbd5d5; color: #7f1d1d; }
+    .mensaje { padding: .75rem 1rem; background: #d7f5dd; border-radius: 6px; margin-bottom: 1rem; }
+    .errorlist { color: #b42318; margin: .25rem 0; padding-left: 1.1rem; }
+    form p { margin: .75rem 0; }
+    label { display: block; font-weight: 600; margin-bottom: .2rem; }
+    input, select { padding: .4rem; min-width: 260px; }
+    .boton { background: #1f3a5f; color: #fff; border: 0; padding: .55rem 1.1rem; border-radius: 6px; cursor: pointer; font: inherit; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>Minimarket</strong>
+    {% if user.is_authenticated %}
+      <a href="{% url 'lotes' %}">Inventario</a>
+      <a href="{% url 'movimiento_nuevo' %}">Registrar movimiento</a>
+      <a href="{% url 'movimientos' %}">Historial</a>
+      <span class="espacio"></span>
+      <span>{{ user.perfil.nombre|default:user.get_username }}{% if user.perfil %} ({{ user.perfil.get_rol_display }}){% endif %}</span>
+      <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Cerrar sesión</button></form>
+    {% endif %}
+  </header>
+  <main>
+    {% for mensaje in messages %}<div class="mensaje">{{ mensaje }}</div>{% endfor %}
+    {% block contenido %}{% endblock %}
+  </main>
+</body>
+</html>

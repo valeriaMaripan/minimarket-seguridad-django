@@ -1,0 +1,14 @@
+{% extends 'inventario/base.html' %}
+{% block titulo %}Iniciar sesión{% endblock %}
+{% block contenido %}
+  <h1>Iniciar sesión</h1>
+  <form method="post">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    {% for campo in form %}
+      <p><label for="{{ campo.id_for_label }}">{{ campo.label }}</label>{{ campo }}{{ campo.errors }}</p>
+    {% endfor %}
+    <input type="hidden" name="next" value="{{ next }}">
+    <button class="boton" type="submit">Entrar</button>
+  </form>
+{% endblock %}

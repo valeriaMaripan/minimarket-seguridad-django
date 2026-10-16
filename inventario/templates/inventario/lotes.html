@@ -1,0 +1,23 @@
+{% extends 'inventario/base.html' %}
+{% block titulo %}Inventario por lotes{% endblock %}
+{% block contenido %}
+  <h1>Inventario por lotes</h1>
+  <p>Ordenado por fecha de vencimiento: primero en vencer, primero en salir.</p>
+  <table>
+    <thead><tr><th>Producto</th><th>Lote</th><th>Vence</th><th>Días</th><th>Cantidad</th><th>Estado</th></tr></thead>
+    <tbody>
+    {% for lote in lotes %}
+      <tr>
+        <td>{{ lote.producto.nombre }}</td>
+        <td>{{ lote.codigo_lote }}</td>
+        <td>{{ lote.fecha_vencimiento|date:"d/m/Y" }}</td>
+        <td>{{ lote.dias_para_vencer }}</td>
+        <td>{{ lote.cantidad }}</td>
+        <td><span class="badge {{ lote.estado }}">{{ lote.get_estado_label }}</span></td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6">No hay lotes registrados.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

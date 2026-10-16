@@ -1,0 +1,18 @@
+{% extends 'inventario/base.html' %}
+{% block titulo %}Registrar movimiento{% endblock %}
+{% block contenido %}
+  <h1>Registrar movimiento</h1>
+  <p>Registrado por: <strong>{{ perfil.nombre }}</strong> ({{ perfil.get_rol_display }})</p>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    {% for campo in form %}
+      <p>
+        <label for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+        {{ campo }}
+        {{ campo.errors }}
+      </p>
+    {% endfor %}
+    <button class="boton" type="submit">Registrar</button>
+  </form>
+{% endblock %}

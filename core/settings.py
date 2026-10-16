@@ -126,3 +126,9 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+
+
+# Fase 3: acceso a las vistas del inventario
+LOGIN_URL = 'login'
+LOGIN_REDIRECT_URL = 'lotes'
+LOGOUT_REDIRECT_URL = 'login'

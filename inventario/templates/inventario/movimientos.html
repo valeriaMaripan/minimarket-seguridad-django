@@ -1,0 +1,21 @@
+{% extends 'inventario/base.html' %}
+{% block titulo %}Historial de movimientos{% endblock %}
+{% block contenido %}
+  <h1>Historial de movimientos</h1>
+  <table>
+    <thead><tr><th>Fecha</th><th>Tipo</th><th>Producto / Lote</th><th>Cantidad</th><th>Usuario</th></tr></thead>
+    <tbody>
+    {% for m in movimientos %}
+      <tr>
+        <td>{{ m.fecha|date:"d/m/Y H:i" }}</td>
+        <td>{{ m.get_tipo_display }}</td>
+        <td>{{ m.lote.producto.nombre }} · {{ m.lote.codigo_lote }}</td>
+        <td>{{ m.cantidad }}</td>
+        <td>{{ m.usuario.nombre }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5">Aún no hay movimientos.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}
