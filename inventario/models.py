@@ -106,6 +106,31 @@ class Lote(models.Model):
                 )
 
 
+class Pedido(models.Model):
+    """Pedido de venta con uno o más productos.
+
+    Es todo o nada: si falta stock de cualquier producto no se registra el
+    pedido ni se descuenta nada (ver servicios.registrar_pedido). Los pedidos
+    rechazados por falta de stock quedan en la auditoría.
+    """
+    usuario = models.ForeignKey(
+        Usuario, on_delete=models.PROTECT, related_name='pedidos'
+    )
+    fecha = models.DateTimeField(auto_now_add=True)
+    observacion = models.CharField(max_length=255, blank=True)
+
+    def __str__(self):
+        return f"Pedido #{self.pk} - {self.usuario.nombre}"
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            raise PermissionError('Los pedidos no se pueden modificar.')
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise PermissionError('Los pedidos no se pueden eliminar.')
+
+
 class Movimiento(models.Model):
     """Registro de cada ingreso, salida o merma de un lote.
 
@@ -122,6 +147,11 @@ class Movimiento(models.Model):
     )
     usuario = models.ForeignKey(
         Usuario, on_delete=models.PROTECT, related_name='movimientos'
+    )
+    # Si la salida forma parte de un pedido, queda enlazada a él.
+    pedido = models.ForeignKey(
+        Pedido, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='movimientos',
     )
     tipo = models.CharField(max_length=10, choices=TIPOS)
     cantidad = models.PositiveIntegerField(validators=[MinValueValidator(1)])

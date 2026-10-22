@@ -7,7 +7,8 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Lote, Movimiento, Producto, RegistroAuditoria, Usuario
+from .models import Lote, Movimiento, Pedido, Producto, RegistroAuditoria, Usuario
+from .servicios import StockInsuficiente, registrar_pedido
 
 
 def hoy():
@@ -193,3 +194,197 @@ class Vistas(BaseDatos):
         self.client.force_login(self.cuenta_cajero)
         r = self.client.get(reverse('lotes'))
         self.assertContains(r, 'Vigente')
+
+
+class Pedidos(BaseDatos):
+    """Pedido de varios productos: todo o nada, vendiendo primero el que vence antes."""
+
+    def setUp(self):
+        super().setUp()
+        self.leche = Producto.objects.create(
+            sku='LEC-001', nombre='Leche 1L', precio_actual=Decimal('1200.00'), stock_total=0)
+        self.lote_leche = Lote.objects.create(
+            producto=self.leche, codigo_lote='LE1',
+            fecha_vencimiento=hoy() + timedelta(days=90), cantidad=10)
+
+    def test_pedido_valido_descuenta_todo(self):
+        pedido = registrar_pedido(self.cajero, [(self.producto, 5), (self.leche, 3)])
+        self.assertEqual(pedido.movimientos.count(), 2)
+        self.assertEqual(self.stock(), (45, 45))
+        self.leche.refresh_from_db()
+        self.assertEqual(self.leche.stock_total, 7)
+
+    def test_sin_stock_rechaza_todo_el_pedido(self):
+        # El arroz alcanza, la leche no: no se debe descontar NADA.
+        with self.assertRaises(StockInsuficiente):
+            registrar_pedido(self.cajero, [(self.producto, 5), (self.leche, 11)])
+        self.assertEqual(self.stock(), (50, 50))
+        self.leche.refresh_from_db()
+        self.assertEqual(self.leche.stock_total, 10)
+        self.assertEqual(Pedido.objects.count(), 0)
+        self.assertEqual(Movimiento.objects.count(), 0)
+
+    def test_el_error_indica_que_producto_falta(self):
+        with self.assertRaises(StockInsuficiente) as ctx:
+            registrar_pedido(self.cajero, [(self.leche, 11)])
+        self.assertIn('Leche 1L', str(ctx.exception))
+        self.assertIn('10', str(ctx.exception))
+
+    def test_vende_primero_el_lote_que_vence_antes(self):
+        antes = Lote.objects.create(
+            producto=self.producto, codigo_lote='L0',
+            fecha_vencimiento=hoy() + timedelta(days=20), cantidad=3)
+        registrar_pedido(self.cajero, [(self.producto, 5)])
+        antes.refresh_from_db()
+        self.lote.refresh_from_db()
+        self.assertEqual(antes.cantidad, 0)   # se agotó el que vence primero
+        self.assertEqual(self.lote.cantidad, 48)  # y el resto salió del siguiente
+
+    def test_lote_vencido_no_cuenta_como_stock(self):
+        Lote.objects.filter(pk=self.lote.pk).update(fecha_vencimiento=hoy() - timedelta(days=1))
+        with self.assertRaises(StockInsuficiente):
+            registrar_pedido(self.cajero, [(self.producto, 1)])
+
+    def test_lineas_repetidas_se_suman(self):
+        with self.assertRaises(StockInsuficiente):
+            registrar_pedido(self.cajero, [(self.producto, 30), (self.producto, 30)])
+        self.assertEqual(self.stock(), (50, 50))
+
+    def test_pedido_vacio_no_es_valido(self):
+        with self.assertRaises(ValueError):
+            registrar_pedido(self.cajero, [])
+
+    def test_pedido_no_se_modifica_ni_borra(self):
+        pedido = registrar_pedido(self.cajero, [(self.producto, 1)])
+        pedido.observacion = 'otro'
+        with self.assertRaises(PermissionError):
+            pedido.save()
+        with self.assertRaises(PermissionError):
+            pedido.delete()
+
+
+class RolesYAcceso(BaseDatos):
+    """Pantallas de pedidos, ingreso de lotes y auditoría según el rol."""
+
+    def setUp(self):
+        super().setUp()
+        User = get_user_model()
+        self.cuenta_cajero = User.objects.create_user('carlos', password='clave-de-prueba-1')
+        self.cuenta_admin = User.objects.create_user('ana', password='clave-de-prueba-2')
+        self.cuenta_sin_perfil = User.objects.create_user('intruso', password='clave-de-prueba-3')
+        self.cajero.cuenta = self.cuenta_cajero
+        self.cajero.save()
+        self.admin.cuenta = self.cuenta_admin
+        self.admin.save()
+
+    def datos_pedido(self, lineas):
+        datos = {'form-TOTAL_FORMS': 4, 'form-INITIAL_FORMS': 0,
+                 'form-MIN_NUM_FORMS': 0, 'form-MAX_NUM_FORMS': 1000}
+        for i in range(4):
+            sku, cant = lineas[i] if i < len(lineas) else ('', '')
+            datos[f'form-{i}-producto'] = sku
+            datos[f'form-{i}-cantidad'] = cant
+        return datos
+
+    def datos_lote(self, **cambios):
+        datos = {'producto': self.producto.pk, 'codigo_lote': 'L9',
+                 'fecha_vencimiento': (hoy() + timedelta(days=100)).isoformat(), 'cantidad': 20}
+        datos.update(cambios)
+        return datos
+
+    def test_todas_las_pantallas_nuevas_exigen_login(self):
+        for nombre in ('pedido_nuevo', 'lote_nuevo', 'auditoria'):
+            r = self.client.get(reverse(nombre))
+            self.assertEqual(r.status_code, 302, nombre)
+            self.assertIn('/cuentas/login/', r['Location'])
+
+    def test_cajero_no_entra_a_pantallas_de_administrador(self):
+        self.client.force_login(self.cuenta_cajero)
+        for nombre in ('lote_nuevo', 'auditoria'):
+            self.assertEqual(self.client.get(reverse(nombre)).status_code, 403, nombre)
+
+    def test_cajero_no_puede_ingresar_lote_enviando_el_formulario_a_mano(self):
+        self.client.force_login(self.cuenta_cajero)
+        r = self.client.post(reverse('lote_nuevo'), self.datos_lote())
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(Lote.objects.count(), 1)
+        self.assertEqual(self.stock(), (50, 50))
+
+    def test_cuenta_sin_perfil_no_entra_a_ninguna(self):
+        self.client.force_login(self.cuenta_sin_perfil)
+        for nombre in ('pedido_nuevo', 'lote_nuevo', 'auditoria'):
+            self.assertEqual(self.client.get(reverse(nombre)).status_code, 403, nombre)
+
+    def test_admin_ingresa_lote_y_queda_en_auditoria(self):
+        self.client.force_login(self.cuenta_admin)
+        r = self.client.post(reverse('lote_nuevo'), self.datos_lote())
+        self.assertRedirects(r, reverse('lotes'))
+        self.assertEqual(self.stock()[1], 70)
+        reg = RegistroAuditoria.objects.get(accion='INGRESO_LOTE')
+        self.assertEqual(reg.realizado_por, 'ana')
+        self.assertEqual(reg.usuario, self.admin)
+
+    def test_admin_no_puede_ingresar_lote_vencido(self):
+        self.client.force_login(self.cuenta_admin)
+        vencido = (hoy() - timedelta(days=1)).isoformat()
+        r = self.client.post(reverse('lote_nuevo'), self.datos_lote(fecha_vencimiento=vencido))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'ya está vencido')
+        self.assertEqual(Lote.objects.count(), 1)
+
+    def test_admin_ve_la_auditoria(self):
+        self.client.force_login(self.cuenta_admin)
+        self.assertEqual(self.client.get(reverse('auditoria')).status_code, 200)
+
+    def test_cajero_registra_pedido_a_su_nombre(self):
+        self.client.force_login(self.cuenta_cajero)
+        r = self.client.post(reverse('pedido_nuevo'),
+                             self.datos_pedido([(self.producto.pk, 4)]))
+        self.assertRedirects(r, reverse('movimientos'))
+        pedido = Pedido.objects.get()
+        self.assertEqual(pedido.usuario, self.cajero)
+        self.assertEqual(self.stock(), (46, 46))
+
+    def test_pedido_sin_stock_muestra_error_audita_y_no_descuenta(self):
+        self.client.force_login(self.cuenta_cajero)
+        r = self.client.post(reverse('pedido_nuevo'),
+                             self.datos_pedido([(self.producto.pk, 999)]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Pedido rechazado')
+        self.assertEqual(self.stock(), (50, 50))
+        self.assertEqual(Pedido.objects.count(), 0)
+        reg = RegistroAuditoria.objects.get(accion='PEDIDO_RECHAZADO_SIN_STOCK')
+        self.assertEqual(reg.usuario, self.cajero)
+        self.assertEqual(reg.valor_anterior, 'disponible: 50')
+        self.assertEqual(reg.valor_nuevo, 'solicitado: 999')
+
+    def test_pedido_vacio_se_rechaza(self):
+        self.client.force_login(self.cuenta_cajero)
+        r = self.client.post(reverse('pedido_nuevo'), self.datos_pedido([]))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'al menos un producto')
+        self.assertEqual(Pedido.objects.count(), 0)
+
+    def test_linea_incompleta_se_rechaza(self):
+        self.client.force_login(self.cuenta_cajero)
+        r = self.client.post(reverse('pedido_nuevo'),
+                             self.datos_pedido([(self.producto.pk, '')]))
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(Pedido.objects.count(), 0)
+
+    def test_cantidad_negativa_o_cero_se_rechaza(self):
+        self.client.force_login(self.cuenta_cajero)
+        for cantidad in (0, -3):
+            r = self.client.post(reverse('pedido_nuevo'),
+                                 self.datos_pedido([(self.producto.pk, cantidad)]))
+            self.assertEqual(r.status_code, 200)
+        self.assertEqual(self.stock(), (50, 50))
+
+    def test_menu_del_cajero_no_muestra_opciones_de_administrador(self):
+        self.client.force_login(self.cuenta_cajero)
+        r = self.client.get(reverse('lotes'))
+        self.assertNotContains(r, 'Ingresar lote')
+        self.assertNotContains(r, 'Auditoría')
+        self.client.force_login(self.cuenta_admin)
+        r = self.client.get(reverse('lotes'))
+        self.assertContains(r, 'Ingresar lote')

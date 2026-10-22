@@ -1,0 +1,23 @@
+{% extends 'inventario/base.html' %}
+{% block titulo %}Auditoría{% endblock %}
+{% block contenido %}
+  <h1>Registro de auditoría</h1>
+  <p>Solo lectura. Muestra los últimos 100 registros.</p>
+  <table>
+    <thead><tr><th>Fecha</th><th>Realizado por</th><th>Acción</th><th>Producto</th><th>Antes</th><th>Después</th></tr></thead>
+    <tbody>
+    {% for r in registros %}
+      <tr>
+        <td>{{ r.fecha|date:"d/m/Y H:i" }}</td>
+        <td>{{ r.realizado_por }}</td>
+        <td>{{ r.accion }}</td>
+        <td>{{ r.producto.nombre|default:"—" }}</td>
+        <td>{{ r.valor_anterior|default:"—" }}</td>
+        <td>{{ r.valor_nuevo|default:"—" }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6">Aún no hay registros.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

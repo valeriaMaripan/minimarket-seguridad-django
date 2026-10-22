@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Usuario, Producto, Lote, Movimiento, RegistroAuditoria
+from .models import Usuario, Producto, Lote, Movimiento, Pedido, RegistroAuditoria
 
 
 @admin.register(Usuario)
@@ -46,7 +46,7 @@ class LoteAdmin(admin.ModelAdmin):
 
 @admin.register(Movimiento)
 class MovimientoAdmin(admin.ModelAdmin):
-    list_display = ('fecha', 'tipo', 'lote', 'cantidad', 'usuario')
+    list_display = ('fecha', 'tipo', 'lote', 'cantidad', 'pedido', 'usuario')
     list_filter = ('tipo',)
 
     # Registro de solo adición: cada movimiento ya afectó el stock.
@@ -62,6 +62,21 @@ class RegistroAuditoriaAdmin(admin.ModelAdmin):
     list_display = ('fecha', 'realizado_por', 'producto', 'accion', 'valor_anterior', 'valor_nuevo')
 
     # Solo lectura: nadie puede crear, editar ni borrar desde el panel
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(Pedido)
+class PedidoAdmin(admin.ModelAdmin):
+    list_display = ('id', 'fecha', 'usuario')
+
+    # Los pedidos se crean desde la aplicación y no se alteran después.
     def has_add_permission(self, request):
         return False
 

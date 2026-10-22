@@ -1,0 +1,7 @@
+{% extends 'inventario/base.html' %}
+{% block titulo %}Acceso denegado{% endblock %}
+{% block contenido %}
+  <h1>Acceso denegado</h1>
+  <div class="error">{{ exception|default:"No tienes permiso para ver esta página." }}</div>
+  <p><a href="{% url 'lotes' %}">Volver al inventario</a></p>
+{% endblock %}

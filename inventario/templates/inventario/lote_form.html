@@ -1,0 +1,18 @@
+{% extends 'inventario/base.html' %}
+{% block titulo %}Ingresar lote{% endblock %}
+{% block contenido %}
+  <h1>Ingresar lote</h1>
+  <p>Solo administradores. Registrado por: <strong>{{ perfil.nombre }}</strong> ({{ perfil.get_rol_display }})</p>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    {% for campo in form %}
+      <p>
+        <label for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+        {{ campo }}
+        {{ campo.errors }}
+      </p>
+    {% endfor %}
+    <button class="boton" type="submit">Ingresar lote</button>
+  </form>
+{% endblock %}

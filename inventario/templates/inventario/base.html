@@ -23,6 +23,8 @@
     form p { margin: .75rem 0; }
     label { display: block; font-weight: 600; margin-bottom: .2rem; }
     input, select { padding: .4rem; min-width: 260px; }
+    .error { padding: .75rem 1rem; background: #fbd5d5; color: #7f1d1d; border-radius: 6px; margin-bottom: 1rem; }
+    .linea { display: flex; gap: 1rem; flex-wrap: wrap; }
     .boton { background: #1f3a5f; color: #fff; border: 0; padding: .55rem 1.1rem; border-radius: 6px; cursor: pointer; font: inherit; }
   </style>
 </head>
@@ -31,8 +33,13 @@
     <strong>Minimarket</strong>
     {% if user.is_authenticated %}
       <a href="{% url 'lotes' %}">Inventario</a>
+      <a href="{% url 'pedido_nuevo' %}">Nuevo pedido</a>
       <a href="{% url 'movimiento_nuevo' %}">Registrar movimiento</a>
       <a href="{% url 'movimientos' %}">Historial</a>
+      {% if user.perfil.rol == 'ADMIN' %}
+        <a href="{% url 'lote_nuevo' %}">Ingresar lote</a>
+        <a href="{% url 'auditoria' %}">Auditoría</a>
+      {% endif %}
       <span class="espacio"></span>
       <span>{{ user.perfil.nombre|default:user.get_username }}{% if user.perfil %} ({{ user.perfil.get_rol_display }}){% endif %}</span>
       <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Cerrar sesión</button></form>
