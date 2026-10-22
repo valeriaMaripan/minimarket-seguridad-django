@@ -15,6 +15,7 @@ class MovimientoForm(forms.ModelForm):
     class Meta:
         model = Movimiento
         fields = ['lote', 'tipo', 'cantidad', 'observacion']
+        labels = {'observacion': 'Observación (opcional)'}
         widgets = {'cantidad': forms.NumberInput(attrs={'min': 1})}
 
     def __init__(self, *args, usuario, **kwargs):
@@ -22,6 +23,7 @@ class MovimientoForm(forms.ModelForm):
         self.usuario = usuario
         self.instance.usuario = usuario
         self.fields['lote'].queryset = Lote.objects.select_related('producto')
+        self.fields['lote'].empty_label = 'Elige un lote'
         if usuario.rol == 'CAJERO':
             # Un cajero solo puede registrar ventas (salidas).
             self.fields['tipo'].choices = [('SALIDA', 'Salida / Venta')]
@@ -44,15 +46,21 @@ class LoteForm(forms.ModelForm):
     class Meta:
         model = Lote
         fields = ['producto', 'codigo_lote', 'fecha_vencimiento', 'cantidad']
+        labels = {'codigo_lote': 'Código de lote', 'fecha_vencimiento': 'Fecha de vencimiento'}
         widgets = {
             'fecha_vencimiento': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
             'cantidad': forms.NumberInput(attrs={'min': 1}),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['producto'].empty_label = 'Elige un producto'
+
 
 class PedidoItemForm(forms.Form):
     """Una línea del pedido: producto y cantidad. Una línea vacía se ignora."""
-    producto = forms.ModelChoiceField(queryset=Producto.objects.order_by('nombre'), required=False)
+    producto = forms.ModelChoiceField(queryset=Producto.objects.order_by('nombre'), required=False,
+                                      empty_label='Elige un producto')
     cantidad = forms.IntegerField(min_value=1, required=False,
                                   widget=forms.NumberInput(attrs={'min': 1}))
 

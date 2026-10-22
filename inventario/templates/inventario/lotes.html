@@ -2,22 +2,29 @@
 {% block titulo %}Inventario por lotes{% endblock %}
 {% block contenido %}
   <h1>Inventario por lotes</h1>
-  <p>Ordenado por fecha de vencimiento: primero en vencer, primero en salir.</p>
+  <p class="bajada">Ordenado por fecha de vencimiento: primero en vencer, primero en salir.</p>
+  <ul class="resumen" aria-label="Resumen de lotes">
+    <li><span class="badge VIGENTE">Vigente</span><strong>{{ resumen.VIGENTE }}</strong></li>
+    <li><span class="badge POR_VENCER">Por vencer</span><strong>{{ resumen.POR_VENCER }}</strong></li>
+    <li><span class="badge VENCIDO">Vencido</span><strong>{{ resumen.VENCIDO }}</strong></li>
+  </ul>
+  <div class="tabla">
   <table>
-    <thead><tr><th>Producto</th><th>Lote</th><th>Vence</th><th>Días</th><th>Cantidad</th><th>Estado</th></tr></thead>
+    <thead><tr><th>Producto</th><th>Lote</th><th>Vence</th><th class="num">Días</th><th class="num">Cantidad</th><th>Estado</th></tr></thead>
     <tbody>
     {% for lote in lotes %}
-      <tr>
+      <tr class="fila-{{ lote.estado }}">
         <td>{{ lote.producto.nombre }}</td>
-        <td>{{ lote.codigo_lote }}</td>
+        <td class="sutil">{{ lote.codigo_lote }}</td>
         <td>{{ lote.fecha_vencimiento|date:"d/m/Y" }}</td>
-        <td>{{ lote.dias_para_vencer }}</td>
-        <td>{{ lote.cantidad }}</td>
+        <td class="num">{{ lote.dias_para_vencer }}</td>
+        <td class="num">{{ lote.cantidad }}</td>
         <td><span class="badge {{ lote.estado }}">{{ lote.get_estado_label }}</span></td>
       </tr>
     {% empty %}
-      <tr><td colspan="6">No hay lotes registrados.</td></tr>
+      <tr><td colspan="6">No hay lotes registrados. Un administrador puede ingresarlos desde "Ingresar lote".</td></tr>
     {% endfor %}
     </tbody>
   </table>
+  </div>
 {% endblock %}

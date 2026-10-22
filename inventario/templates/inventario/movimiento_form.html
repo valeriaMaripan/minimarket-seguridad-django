@@ -2,17 +2,17 @@
 {% block titulo %}Registrar movimiento{% endblock %}
 {% block contenido %}
   <h1>Registrar movimiento</h1>
-  <p>Registrado por: <strong>{{ perfil.nombre }}</strong> ({{ perfil.get_rol_display }})</p>
-  <form method="post" novalidate>
+  <p class="quien">Registrado por <strong>{{ perfil.nombre }}</strong> ({{ perfil.get_rol_display }})</p>
+  <form class="panel" method="post" novalidate>
     {% csrf_token %}
-    {{ form.non_field_errors }}
+    {% if form.non_field_errors %}<div class="error">{% for e in form.non_field_errors %}{{ e }} {% endfor %}</div>{% endif %}
     {% for campo in form %}
-      <p>
+      <div class="campo">
         <label for="{{ campo.id_for_label }}">{{ campo.label }}</label>
         {{ campo }}
         {{ campo.errors }}
-      </p>
+      </div>
     {% endfor %}
-    <button class="boton" type="submit">Registrar</button>
+    <button class="boton" type="submit">Registrar movimiento</button>
   </form>
 {% endblock %}

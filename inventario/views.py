@@ -40,8 +40,11 @@ def rol_requerido(*roles):
 def lotes(request):
     """Inventario por lotes, del que vence primero al que vence después."""
     _perfil(request)
-    lista = Lote.objects.select_related('producto').order_by('fecha_vencimiento')
-    return render(request, 'inventario/lotes.html', {'lotes': lista})
+    lista = list(Lote.objects.select_related('producto').order_by('fecha_vencimiento'))
+    resumen = {'VIGENTE': 0, 'POR_VENCER': 0, 'VENCIDO': 0}
+    for lote in lista:
+        resumen[lote.estado] += 1
+    return render(request, 'inventario/lotes.html', {'lotes': lista, 'resumen': resumen})
 
 
 @login_required

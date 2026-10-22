@@ -1,14 +1,17 @@
 {% extends 'inventario/base.html' %}
 {% block titulo %}Iniciar sesión{% endblock %}
 {% block contenido %}
-  <h1>Iniciar sesión</h1>
-  <form method="post">
-    {% csrf_token %}
-    {{ form.non_field_errors }}
-    {% for campo in form %}
-      <p><label for="{{ campo.id_for_label }}">{{ campo.label }}</label>{{ campo }}{{ campo.errors }}</p>
-    {% endfor %}
-    <input type="hidden" name="next" value="{{ next }}">
-    <button class="boton" type="submit">Entrar</button>
-  </form>
+  <div class="acceso">
+    <h1>Iniciar sesión</h1>
+    <p class="bajada">Control de inventario por lotes y vencimientos. Usa la cuenta que te entregó el administrador.</p>
+    <form class="panel" method="post">
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="error" role="alert">El usuario o la contraseña no son correctos. Revisa mayúsculas y vuelve a intentarlo.</div>{% endif %}
+      {% for campo in form %}
+        <div class="campo"><label for="{{ campo.id_for_label }}">{{ campo.label }}</label>{{ campo }}{{ campo.errors }}</div>
+      {% endfor %}
+      <input type="hidden" name="next" value="{{ next }}">
+      <button class="boton" type="submit">Entrar</button>
+    </form>
+  </div>
 {% endblock %}

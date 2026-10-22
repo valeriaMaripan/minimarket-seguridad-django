@@ -2,21 +2,30 @@
 {% block titulo %}Nuevo pedido{% endblock %}
 {% block contenido %}
   <h1>Nuevo pedido</h1>
-  <p>Registrado por: <strong>{{ perfil.nombre }}</strong> ({{ perfil.get_rol_display }})</p>
-  <p>Si falta stock de cualquier producto, el pedido se rechaza completo y no se descuenta nada.
+  <p class="bajada">Si falta stock de cualquier producto, el pedido se rechaza completo y no se descuenta nada.
      Se vende primero el lote que vence antes; los lotes vencidos no se venden.</p>
-  {% if error_pedido %}<div class="error">{{ error_pedido }}</div>{% endif %}
-  <form method="post" novalidate>
+  <p class="quien">Registrado por <strong>{{ perfil.nombre }}</strong> ({{ perfil.get_rol_display }})</p>
+  {% if error_pedido %}<div class="error" role="alert">{{ error_pedido }}</div>{% endif %}
+  <form class="panel" method="post" novalidate>
     {% csrf_token %}
     {{ formset.management_form }}
     {{ formset.non_form_errors }}
+    <div class="encabezado-lineas" aria-hidden="true"><span>Producto</span><span>Cantidad</span></div>
+    <div class="lineas">
     {% for f in formset %}
+      {{ f.non_field_errors }}
       <div class="linea">
-        {{ f.non_field_errors }}
-        <p><label for="{{ f.producto.id_for_label }}">Producto</label>{{ f.producto }}{{ f.producto.errors }}</p>
-        <p><label for="{{ f.cantidad.id_for_label }}">Cantidad</label>{{ f.cantidad }}{{ f.cantidad.errors }}</p>
+        <div class="campo">
+          <label class="visually-hidden" for="{{ f.producto.id_for_label }}">Producto, línea {{ forloop.counter }}</label>
+          {{ f.producto }}{{ f.producto.errors }}
+        </div>
+        <div class="campo">
+          <label class="visually-hidden" for="{{ f.cantidad.id_for_label }}">Cantidad, línea {{ forloop.counter }}</label>
+          {{ f.cantidad }}{{ f.cantidad.errors }}
+        </div>
       </div>
     {% endfor %}
+    </div>
     <button class="boton" type="submit">Registrar pedido</button>
   </form>
 {% endblock %}

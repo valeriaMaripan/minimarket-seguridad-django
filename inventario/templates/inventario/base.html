@@ -3,50 +3,137 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block titulo %}Minimarket{% endblock %}</title>
+  <title>{% block titulo %}Minimarket{% endblock %} | Minimarket</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; background: #f4f5f7; color: #1f2933; }
-    header { background: #1f3a5f; color: #fff; padding: .75rem 1.25rem; display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap; }
-    header a, header button { color: #fff; text-decoration: none; background: none; border: 0; font: inherit; cursor: pointer; }
-    header a:hover, header button:hover { text-decoration: underline; }
-    header .espacio { flex: 1; }
-    main { max-width: 960px; margin: 1.5rem auto; padding: 0 1rem; }
-    table { width: 100%; border-collapse: collapse; background: #fff; }
-    th, td { padding: .6rem .75rem; text-align: left; border-bottom: 1px solid #e4e7eb; }
-    th { background: #e9edf2; }
-    .badge { padding: .15rem .5rem; border-radius: 999px; font-size: .85rem; }
-    .VIGENTE { background: #d7f5dd; color: #14532d; }
-    .POR_VENCER { background: #fdecc8; color: #7a4b00; }
-    .VENCIDO { background: #fbd5d5; color: #7f1d1d; }
-    .mensaje { padding: .75rem 1rem; background: #d7f5dd; border-radius: 6px; margin-bottom: 1rem; }
-    .errorlist { color: #b42318; margin: .25rem 0; padding-left: 1.1rem; }
-    form p { margin: .75rem 0; }
-    label { display: block; font-weight: 600; margin-bottom: .2rem; }
-    input, select { padding: .4rem; min-width: 260px; }
-    .error { padding: .75rem 1rem; background: #fbd5d5; color: #7f1d1d; border-radius: 6px; margin-bottom: 1rem; }
-    .linea { display: flex; gap: 1rem; flex-wrap: wrap; }
-    .boton { background: #1f3a5f; color: #fff; border: 0; padding: .55rem 1.1rem; border-radius: 6px; cursor: pointer; font: inherit; }
+    /* Paleta inspirada en la góndola: estante verde, riel de precios amarillo. */
+    :root {
+      --estante: #17463a;
+      --estante-claro: #23604f;
+      --riel: #f2c230;
+      --tinta: #1c2430;
+      --tinta-suave: #5a6573;
+      --papel: #fbfcfa;
+      --blanco: #ffffff;
+      --linea: #dce3de;
+      --vigente: #2f7a4f;   --vigente-fondo: #e3f2e8;
+      --porvencer: #8a5a00; --porvencer-fondo: #fff1cc;
+      --vencido: #a3301f;   --vencido-fondo: #fbe1dc;
+      /* Bahnschrift viene con Windows: letra de rótulo, sin depender de internet. */
+      --rotulo: "Bahnschrift", "DIN Alternate", "Arial Narrow", system-ui, sans-serif;
+      --texto: "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--papel); color: var(--tinta); font: 16px/1.5 var(--texto); }
+    a { color: var(--estante-claro); }
+    :focus-visible { outline: 3px solid var(--riel); outline-offset: 2px; }
+
+    /* Encabezado: el estante con su riel de precios. */
+    .barra { background: var(--estante); color: var(--blanco); border-bottom: 6px solid var(--riel); }
+    .barra-interior { max-width: 1080px; margin: 0 auto; padding: 0 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+    .barra-menu { max-width: 1080px; margin: 0 auto; padding: 0 1rem; }
+    .marca { font-family: var(--rotulo); font-size: 1.35rem; font-weight: 700; letter-spacing: .01em; color: var(--blanco); text-decoration: none; display: flex; align-items: center; padding: .8rem 0 .4rem; }
+    .marca span { color: var(--riel); }
+    .menu { display: flex; gap: .25rem; flex-wrap: wrap; margin-left: -.7rem; }
+    .menu a { font-family: var(--rotulo); color: #d6e6df; text-decoration: none; padding: .55rem .7rem .7rem; border-bottom: 4px solid transparent; margin-bottom: -6px; }
+    .menu a:hover { color: var(--blanco); }
+    .menu a.activo { color: var(--blanco); border-bottom-color: var(--blanco); }
+    .menu .solo-admin { margin-left: auto; }
+    .sesion { display: flex; align-items: center; gap: .9rem; font-size: .92rem; padding: .8rem 0 .4rem; }
+    .sesion .rol { background: rgba(255,255,255,.12); padding: .1rem .55rem; border-radius: 4px; font-family: var(--rotulo); }
+    .sesion button { background: none; border: 1px solid rgba(255,255,255,.45); color: var(--blanco); border-radius: 6px; padding: .3rem .7rem; font: inherit; cursor: pointer; }
+    .sesion button:hover { background: rgba(255,255,255,.1); }
+
+    main { max-width: 1080px; margin: 2rem auto 3rem; padding: 0 1rem; }
+    h1 { font-family: var(--rotulo); font-weight: 700; font-size: 2rem; line-height: 1.15; margin: 0 0 .35rem; }
+    .bajada { color: var(--tinta-suave); margin: 0 0 1.5rem; max-width: 70ch; }
+
+    /* Avisos */
+    .mensaje, .error { padding: .8rem 1rem; border-radius: 6px; margin-bottom: 1.25rem; border-left: 5px solid; }
+    .mensaje { background: var(--vigente-fondo); border-color: var(--vigente); }
+    .error { background: var(--vencido-fondo); border-color: var(--vencido); color: #5e1a10; }
+    .errorlist { color: var(--vencido); margin: .3rem 0 0; padding-left: 1.1rem; font-size: .92rem; }
+
+    /* Tablas */
+    .tabla { background: var(--blanco); border: 1px solid var(--linea); border-radius: 8px; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: .7rem .9rem; text-align: left; border-bottom: 1px solid var(--linea); vertical-align: middle; }
+    th { font-family: var(--rotulo); font-weight: 600; color: var(--tinta-suave); background: #f1f4f2; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: #f6f9f7; }
+    .num { text-align: right; font-family: var(--rotulo); font-variant-numeric: tabular-nums; }
+    .sutil { color: var(--tinta-suave); font-size: .92rem; }
+    tr.fila-POR_VENCER td:first-child { box-shadow: inset 4px 0 var(--riel); }
+    tr.fila-VENCIDO td:first-child { box-shadow: inset 4px 0 var(--vencido); }
+
+    /* Estado del lote como etiqueta de precio colgada en la góndola. */
+    .badge { display: inline-block; font-family: var(--rotulo); font-size: .85rem; font-weight: 600; padding: .15rem .7rem .15rem 1.05rem; clip-path: polygon(10px 0, 100% 0, 100% 100%, 10px 100%, 0 50%); white-space: nowrap; }
+    .VIGENTE { background: var(--vigente-fondo); color: var(--vigente); }
+    .POR_VENCER { background: var(--riel); color: #3d2a00; }
+    .VENCIDO { background: var(--vencido); color: var(--blanco); }
+
+    /* Resumen del inventario */
+    .resumen { display: flex; gap: .6rem; flex-wrap: wrap; margin: 0 0 1.25rem; padding: 0; list-style: none; }
+    .resumen li { display: flex; align-items: center; gap: .5rem; background: var(--blanco); border: 1px solid var(--linea); border-radius: 6px; padding: .35rem .75rem .35rem .4rem; }
+    .resumen strong { font-family: var(--rotulo); font-size: 1.1rem; }
+
+    /* Formularios */
+    .panel { background: var(--blanco); border: 1px solid var(--linea); border-radius: 8px; padding: 1.5rem; max-width: 640px; }
+    .campo { margin: 0 0 1rem; }
+    label { display: block; font-weight: 600; margin-bottom: .3rem; }
+    input, select, textarea { width: 100%; padding: .55rem .65rem; border: 1px solid #b9c4bd; border-radius: 6px; font: inherit; background: var(--blanco); color: var(--tinta); }
+    input:focus, select:focus { border-color: var(--estante-claro); }
+    .lineas { display: grid; gap: .5rem; margin-bottom: 1.25rem; }
+    .linea { display: grid; grid-template-columns: 1fr 120px; gap: .75rem; align-items: start; }
+    .linea .campo { margin: 0; }
+    .encabezado-lineas { display: grid; grid-template-columns: 1fr 120px; gap: .75rem; font-weight: 600; }
+    .boton { background: var(--estante); color: var(--blanco); border: 0; padding: .7rem 1.3rem; border-radius: 6px; cursor: pointer; font: 600 1rem var(--rotulo); }
+    .boton:hover { background: var(--estante-claro); }
+    .quien { display: inline-flex; gap: .4rem; align-items: center; background: #eef3f0; border-radius: 6px; padding: .3rem .7rem; margin-bottom: 1.25rem; font-size: .95rem; }
+
+    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .acceso { max-width: 420px; margin: 2rem auto 0; }
+    .acceso .panel { max-width: none; }
+    code { font-size: .85rem; background: #eef3f0; padding: .1rem .35rem; border-radius: 4px; }
+
+    @media (max-width: 640px) {
+      h1 { font-size: 1.6rem; }
+      .menu a { padding: .5rem .55rem .6rem; }
+      .menu .solo-admin { margin-left: 0; }
+      .linea, .encabezado-lineas { grid-template-columns: 1fr 90px; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <strong>Minimarket</strong>
-    {% if user.is_authenticated %}
-      <a href="{% url 'lotes' %}">Inventario</a>
-      <a href="{% url 'pedido_nuevo' %}">Nuevo pedido</a>
-      <a href="{% url 'movimiento_nuevo' %}">Registrar movimiento</a>
-      <a href="{% url 'movimientos' %}">Historial</a>
-      {% if user.perfil.rol == 'ADMIN' %}
-        <a href="{% url 'lote_nuevo' %}">Ingresar lote</a>
-        <a href="{% url 'auditoria' %}">Auditoría</a>
+  <header class="barra">
+    <div class="barra-interior">
+      <a class="marca" href="{% url 'lotes' %}">Mini<span>market</span></a>
+      {% if user.is_authenticated %}
+        <div class="sesion">
+          <span>{{ user.perfil.nombre|default:user.get_username }}</span>
+          {% if user.perfil %}<span class="rol">{{ user.perfil.get_rol_display }}</span>{% endif %}
+          <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Cerrar sesión</button></form>
+        </div>
       {% endif %}
-      <span class="espacio"></span>
-      <span>{{ user.perfil.nombre|default:user.get_username }}{% if user.perfil %} ({{ user.perfil.get_rol_display }}){% endif %}</span>
-      <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Cerrar sesión</button></form>
+    </div>
+    {% if user.is_authenticated %}
+    <div class="barra-menu">
+        {% with actual=request.resolver_match.url_name %}
+        <nav class="menu" aria-label="Menú principal">
+          <a href="{% url 'lotes' %}" {% if actual == 'lotes' %}class="activo" aria-current="page"{% endif %}>Inventario</a>
+          <a href="{% url 'pedido_nuevo' %}" {% if actual == 'pedido_nuevo' %}class="activo" aria-current="page"{% endif %}>Nuevo pedido</a>
+          <a href="{% url 'movimiento_nuevo' %}" {% if actual == 'movimiento_nuevo' %}class="activo" aria-current="page"{% endif %}>Registrar movimiento</a>
+          <a href="{% url 'movimientos' %}" {% if actual == 'movimientos' %}class="activo" aria-current="page"{% endif %}>Historial</a>
+          {% if user.perfil.rol == 'ADMIN' %}
+            <a class="solo-admin{% if actual == 'lote_nuevo' %} activo{% endif %}" href="{% url 'lote_nuevo' %}">Ingresar lote</a>
+            <a class="{% if actual == 'auditoria' %}activo{% endif %}" href="{% url 'auditoria' %}">Auditoría</a>
+          {% endif %}
+        </nav>
+        {% endwith %}
+    </div>
     {% endif %}
   </header>
   <main>
-    {% for mensaje in messages %}<div class="mensaje">{{ mensaje }}</div>{% endfor %}
+    {% for mensaje in messages %}<div class="mensaje" role="status">{{ mensaje }}</div>{% endfor %}
     {% block contenido %}{% endblock %}
   </main>
 </body>

@@ -2,7 +2,8 @@
 {% block titulo %}Auditoría{% endblock %}
 {% block contenido %}
   <h1>Registro de auditoría</h1>
-  <p>Solo lectura. Muestra los últimos 100 registros.</p>
+  <p class="bajada">Solo lectura. Muestra los últimos 100 registros; ninguno se puede modificar ni borrar.</p>
+  <div class="tabla">
   <table>
     <thead><tr><th>Fecha</th><th>Realizado por</th><th>Acción</th><th>Producto</th><th>Antes</th><th>Después</th></tr></thead>
     <tbody>
@@ -10,9 +11,9 @@
       <tr>
         <td>{{ r.fecha|date:"d/m/Y H:i" }}</td>
         <td>{{ r.realizado_por }}</td>
-        <td>{{ r.accion }}</td>
+        <td><code>{{ r.accion }}</code></td>
         <td>{{ r.producto.nombre|default:"—" }}</td>
-        <td>{{ r.valor_anterior|default:"—" }}</td>
+        <td class="sutil">{{ r.valor_anterior|default:"—" }}</td>
         <td>{{ r.valor_nuevo|default:"—" }}</td>
       </tr>
     {% empty %}
@@ -20,4 +21,5 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
 {% endblock %}
