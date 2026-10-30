@@ -288,7 +288,8 @@ class RolesYAcceso(BaseDatos):
 
     def datos_lote(self, **cambios):
         datos = {'producto': self.producto.pk, 'codigo_lote': 'L9',
-                 'fecha_vencimiento': (hoy() + timedelta(days=100)).isoformat(), 'cantidad': 20}
+                 'fecha_vencimiento': (hoy() + timedelta(days=100)).isoformat(), 'cantidad': 20,
+                 'costo_unitario': '1000'}
         datos.update(cambios)
         return datos
 
@@ -388,3 +389,171 @@ class RolesYAcceso(BaseDatos):
         self.client.force_login(self.cuenta_admin)
         r = self.client.get(reverse('lotes'))
         self.assertContains(r, 'Ingresar lote')
+
+
+class ProductosYCostos(BaseDatos):
+    """Fase 4: gestión de productos, costos de compra y márgenes según el rol."""
+
+    def setUp(self):
+        super().setUp()
+        User = get_user_model()
+        self.cuenta_cajero = User.objects.create_user('carlos', password='clave-de-prueba-1')
+        self.cuenta_admin = User.objects.create_user('ana', password='clave-de-prueba-2')
+        self.cajero.cuenta = self.cuenta_cajero
+        self.cajero.save()
+        self.admin.cuenta = self.cuenta_admin
+        self.admin.save()
+        # Lote con costo conocido: precio 1850, costo 1234 -> margen 616 (33.3 %).
+        Lote.objects.create(producto=self.producto, codigo_lote='L-COSTO',
+                            fecha_vencimiento=hoy() + timedelta(days=300), cantidad=10,
+                            costo_unitario=Decimal('1234.00'))
+
+    def datos_producto(self, **cambios):
+        datos = {'sku': 'gal-002', 'nombre': '  Galletas   de vainilla ', 'precio_actual': '990'}
+        datos.update(cambios)
+        return datos
+
+    def editar(self, **cambios):
+        datos = {'nombre': self.producto.nombre, 'precio_actual': str(self.producto.precio_actual),
+                 'activo': 'on'}
+        datos.update(cambios)
+        return self.client.post(reverse('producto_editar', args=[self.producto.sku]), datos)
+
+    # --- Acceso por rol ------------------------------------------------------
+    def test_cajero_ve_productos_pero_no_costos(self):
+        self.client.force_login(self.cuenta_cajero)
+        r = self.client.get(reverse('productos'))
+        self.assertContains(r, 'Arroz 1kg')
+        self.assertNotContains(r, '1234')
+        self.assertNotContains(r, 'Margen')
+        self.assertNotContains(r, 'Crear producto')
+
+    def test_admin_ve_costo_y_margen(self):
+        self.client.force_login(self.cuenta_admin)
+        r = self.client.get(reverse('productos'))
+        self.assertContains(r, '$1.234')
+        self.assertContains(r, '33,3%')  # formato chileno: coma decimal
+
+    def test_cajero_no_crea_ni_edita_productos(self):
+        self.client.force_login(self.cuenta_cajero)
+        self.assertEqual(self.client.get(reverse('producto_nuevo')).status_code, 403)
+        r = self.client.post(reverse('producto_nuevo'), self.datos_producto())
+        self.assertEqual(r.status_code, 403)
+        r = self.editar(precio_actual='1')
+        self.assertEqual(r.status_code, 403)
+        self.producto.refresh_from_db()
+        self.assertEqual(self.producto.precio_actual, Decimal('1850.00'))
+        self.assertFalse(Producto.objects.filter(sku='GAL-002').exists())
+
+    def test_pantallas_de_productos_exigen_login(self):
+        for url in (reverse('productos'), reverse('producto_nuevo'),
+                    reverse('producto_editar', args=[self.producto.sku])):
+            r = self.client.get(url)
+            self.assertEqual(r.status_code, 302, url)
+            self.assertIn('/cuentas/login/', r['Location'])
+
+    def test_producto_inexistente_da_404(self):
+        self.client.force_login(self.cuenta_admin)
+        r = self.client.get(reverse('producto_editar', args=['NO-EXISTE']))
+        self.assertEqual(r.status_code, 404)
+
+    # --- Crear ---------------------------------------------------------------
+    def test_admin_crea_producto_normalizado_y_auditado(self):
+        self.client.force_login(self.cuenta_admin)
+        r = self.client.post(reverse('producto_nuevo'), self.datos_producto())
+        self.assertRedirects(r, reverse('productos'))
+        p = Producto.objects.get(sku='GAL-002')
+        self.assertEqual(p.nombre, 'Galletas de vainilla')
+        self.assertEqual(p.stock_total, 0)
+        self.assertTrue(p.activo)
+        reg = RegistroAuditoria.objects.get(accion='PRODUCTO_CREADO')
+        self.assertEqual((reg.usuario, reg.realizado_por, reg.producto), (self.admin, 'ana', p))
+
+    def test_sku_invalido_o_repetido_se_rechaza(self):
+        self.client.force_login(self.cuenta_admin)
+        for sku in ('A', 'ARR 001', 'ARR/001', '<script>', 'arr-001'):
+            r = self.client.post(reverse('producto_nuevo'), self.datos_producto(sku=sku))
+            self.assertEqual(r.status_code, 200, sku)
+        self.assertEqual(Producto.objects.count(), 1)
+
+    def test_precio_cero_o_negativo_se_rechaza(self):
+        self.client.force_login(self.cuenta_admin)
+        for precio in ('0', '-500', 'abc'):
+            r = self.client.post(reverse('producto_nuevo'), self.datos_producto(precio_actual=precio))
+            self.assertEqual(r.status_code, 200, precio)
+        self.assertFalse(Producto.objects.filter(sku='GAL-002').exists())
+
+    def test_no_se_puede_fijar_el_stock_al_crear(self):
+        self.client.force_login(self.cuenta_admin)
+        self.client.post(reverse('producto_nuevo'), self.datos_producto(stock_total='9999'))
+        self.assertEqual(Producto.objects.get(sku='GAL-002').stock_total, 0)
+
+    # --- Editar --------------------------------------------------------------
+    def test_cambio_de_precio_queda_auditado(self):
+        self.client.force_login(self.cuenta_admin)
+        r = self.editar(precio_actual='1990')
+        self.assertRedirects(r, reverse('productos'))
+        reg = RegistroAuditoria.objects.get(accion='CAMBIO_PRECIO')
+        self.assertEqual((reg.valor_anterior, reg.valor_nuevo), ('1850.00', '1990.00'))
+        self.assertEqual(reg.realizado_por, 'ana')
+
+    def test_guardar_sin_cambios_no_audita(self):
+        self.client.force_login(self.cuenta_admin)
+        self.editar()
+        self.assertEqual(RegistroAuditoria.objects.count(), 0)
+
+    def test_sku_y_stock_no_se_editan(self):
+        self.client.force_login(self.cuenta_admin)
+        self.editar(sku='OTRO-1', stock_total='0', nombre='Arroz grado 1')
+        self.assertFalse(Producto.objects.filter(sku='OTRO-1').exists())
+        self.assertEqual(self.stock()[1], 60)
+        self.assertEqual(RegistroAuditoria.objects.get().accion, 'CAMBIO_NOMBRE')
+
+    def test_precio_bajo_el_costo_avisa_sin_bloquear(self):
+        self.client.force_login(self.cuenta_admin)
+        r = self.editar(precio_actual='1000')
+        r = self.client.get(r['Location'])
+        self.assertContains(r, 'se vende sin ganancia')
+        self.producto.refresh_from_db()
+        self.assertEqual(self.producto.precio_actual, Decimal('1000.00'))
+
+    # --- Desactivar ----------------------------------------------------------
+    def test_desactivar_audita_y_bloquea_venta_y_lotes(self):
+        self.client.force_login(self.cuenta_admin)
+        self.editar(activo='')  # casilla desmarcada
+        self.producto.refresh_from_db()
+        self.assertFalse(self.producto.activo)
+        self.assertEqual(RegistroAuditoria.objects.get().accion, 'PRODUCTO_DESACTIVADO')
+        with self.assertRaises(ValueError):
+            registrar_pedido(self.cajero, [(self.producto, 1)])
+        lote = Lote(producto=self.producto, codigo_lote='L-NUEVO',
+                    fecha_vencimiento=hoy() + timedelta(days=30), cantidad=5)
+        with self.assertRaises(ValidationError):
+            lote.full_clean()
+        self.assertEqual(self.stock()[1], 60)
+
+    def test_producto_desactivado_no_aparece_en_pedidos(self):
+        Producto.objects.filter(pk=self.producto.pk).update(activo=False)
+        self.client.force_login(self.cuenta_cajero)
+        r = self.client.get(reverse('pedido_nuevo'))
+        self.assertNotContains(r, 'Arroz 1kg')
+
+    # --- Lotes con costo y stock vendible ------------------------------------
+    def test_lote_nuevo_exige_costo_y_lo_audita(self):
+        self.client.force_login(self.cuenta_admin)
+        datos = {'producto': self.producto.pk, 'codigo_lote': 'L9', 'cantidad': 20,
+                 'fecha_vencimiento': (hoy() + timedelta(days=100)).isoformat()}
+        r = self.client.post(reverse('lote_nuevo'), datos)
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(Lote.objects.filter(codigo_lote='L9').exists())
+        datos['costo_unitario'] = '1500'
+        r = self.client.post(reverse('lote_nuevo'), datos)
+        self.assertRedirects(r, reverse('lotes'))
+        self.assertEqual(Lote.objects.get(codigo_lote='L9').costo_unitario, Decimal('1500.00'))
+        self.assertIn('costo 1500.00', RegistroAuditoria.objects.get(accion='INGRESO_LOTE').valor_nuevo)
+
+    def test_stock_vendible_excluye_lotes_vencidos(self):
+        Lote.objects.filter(pk=self.lote.pk).update(fecha_vencimiento=hoy() - timedelta(days=1))
+        from .servicios import productos_con_stock
+        p = productos_con_stock().get(pk=self.producto.pk)
+        self.assertEqual((p.stock_vendible, p.stock_vencido), (10, 50))

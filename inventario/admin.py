@@ -9,7 +9,7 @@ class UsuarioAdmin(admin.ModelAdmin):
 
 @admin.register(Producto)
 class ProductoAdmin(admin.ModelAdmin):
-    list_display = ('sku', 'nombre', 'precio_actual', 'stock_total')
+    list_display = ('sku', 'nombre', 'precio_actual', 'stock_total', 'activo')
     # El stock no se edita a mano: lo calculan los lotes y movimientos.
     readonly_fields = ('stock_total',)
 

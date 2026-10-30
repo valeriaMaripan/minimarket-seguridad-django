@@ -50,6 +50,8 @@
     /* Avisos */
     .mensaje, .error { padding: .8rem 1rem; border-radius: 6px; margin-bottom: 1.25rem; border-left: 5px solid; }
     .mensaje { background: var(--vigente-fondo); border-color: var(--vigente); }
+    .mensaje.warning { background: var(--porvencer-fondo); border-color: var(--riel); color: #4a3200; }
+    .mensaje.info { background: #eef3f0; border-color: var(--tinta-suave); }
     .error { background: var(--vencido-fondo); border-color: var(--vencido); color: #5e1a10; }
     .errorlist { color: var(--vencido); margin: .3rem 0 0; padding-left: 1.1rem; font-size: .92rem; }
 
@@ -88,6 +90,13 @@
     .encabezado-lineas { display: grid; grid-template-columns: 1fr 120px; gap: .75rem; font-weight: 600; }
     .boton { background: var(--estante); color: var(--blanco); border: 0; padding: .7rem 1.3rem; border-radius: 6px; cursor: pointer; font: 600 1rem var(--rotulo); }
     .boton:hover { background: var(--estante-claro); }
+    .encabezado { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+    .boton-sec { display: inline-block; background: var(--blanco); color: var(--estante); border: 1px solid var(--estante); padding: .55rem 1.1rem; border-radius: 6px; font: 600 .95rem var(--rotulo); text-decoration: none; }
+    .boton-sec:hover { background: #eef3f0; }
+    .negativo { color: var(--vencido); font-weight: 600; }
+    tr.inactivo td { color: var(--tinta-suave); }
+    .check { display: flex; gap: .5rem; align-items: center; font-weight: 600; }
+    .check input { width: auto; }
     .quien { display: inline-flex; gap: .4rem; align-items: center; background: #eef3f0; border-radius: 6px; padding: .3rem .7rem; margin-bottom: 1.25rem; font-size: .95rem; }
 
     .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -123,6 +132,7 @@
           <a href="{% url 'pedido_nuevo' %}" {% if actual == 'pedido_nuevo' %}class="activo" aria-current="page"{% endif %}>Nuevo pedido</a>
           <a href="{% url 'movimiento_nuevo' %}" {% if actual == 'movimiento_nuevo' %}class="activo" aria-current="page"{% endif %}>Registrar movimiento</a>
           <a href="{% url 'movimientos' %}" {% if actual == 'movimientos' %}class="activo" aria-current="page"{% endif %}>Historial</a>
+          <a href="{% url 'productos' %}" {% if actual == 'productos' or actual == 'producto_nuevo' or actual == 'producto_editar' %}class="activo" aria-current="page"{% endif %}>Productos</a>
           {% if user.perfil.rol == 'ADMIN' %}
             <a class="solo-admin{% if actual == 'lote_nuevo' %} activo{% endif %}" href="{% url 'lote_nuevo' %}">Ingresar lote</a>
             <a class="{% if actual == 'auditoria' %}activo{% endif %}" href="{% url 'auditoria' %}">Auditoría</a>
@@ -133,7 +143,7 @@
     {% endif %}
   </header>
   <main>
-    {% for mensaje in messages %}<div class="mensaje" role="status">{{ mensaje }}</div>{% endfor %}
+    {% for mensaje in messages %}<div class="mensaje {{ mensaje.tags }}" role="status">{{ mensaje }}</div>{% endfor %}
     {% block contenido %}{% endblock %}
   </main>
 </body>

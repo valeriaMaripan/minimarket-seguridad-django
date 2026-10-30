@@ -3,11 +3,13 @@ from functools import wraps
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 
-from .forms import LoteForm, MovimientoForm, PedidoItemFormSet
-from .models import Lote, Movimiento, RegistroAuditoria
-from .servicios import StockInsuficiente, registrar_pedido
+from .forms import LoteForm, MovimientoForm, PedidoItemFormSet, ProductoForm
+from .models import Lote, Movimiento, Producto, RegistroAuditoria
+from .templatetags.formato import pesos
+from .servicios import (StockInsuficiente, guardar_producto, margen, productos_con_stock,
+                        registrar_pedido)
 
 
 def _perfil(request):
@@ -88,6 +90,8 @@ def pedido_nuevo(request):
         else:
             try:
                 pedido = registrar_pedido(perfil, items)
+            except ValueError as error:
+                error_pedido = f'Pedido rechazado, no se descontó nada. {error}'
             except StockInsuficiente as error:
                 # La transacción ya deshizo todo. Se deja constancia del intento.
                 for producto, solicitado, disponible in error.faltantes:
@@ -115,8 +119,10 @@ def lote_nuevo(request):
         RegistroAuditoria.objects.create(
             usuario=perfil, realizado_por=request.user.get_username(),
             producto=lote.producto, accion='INGRESO_LOTE',
-            valor_nuevo=f'lote {lote.codigo_lote}, {lote.cantidad} unidades, vence {lote.fecha_vencimiento}',
+            valor_nuevo=(f'lote {lote.codigo_lote}, {lote.cantidad} unidades, '
+                         f'costo {lote.costo_unitario:.2f} c/u, vence {lote.fecha_vencimiento}'),
         )
+        _avisar_margen(request, lote.producto.precio_actual, lote.costo_unitario)
         messages.success(request, f'Lote {lote.codigo_lote} ingresado correctamente.')
         return redirect('lotes')
     return render(request, 'inventario/lote_form.html', {'form': form, 'perfil': perfil})
@@ -127,3 +133,59 @@ def auditoria(request):
     """Registro de auditoría (solo lectura). Solo administradores."""
     lista = RegistroAuditoria.objects.select_related('producto', 'usuario').order_by('-fecha', '-pk')[:100]
     return render(request, 'inventario/auditoria.html', {'registros': lista})
+
+
+# ---------------------------------------------------------------------------
+# Fase 4: productos y costos
+# ---------------------------------------------------------------------------
+
+def _avisar_margen(request, precio, costo):
+    """Advierte (sin bloquear) si el precio de venta no cubre el costo de compra."""
+    if costo is not None and precio <= costo:
+        messages.warning(request, f'Atención: el precio de venta ({pesos(precio)}) no supera el costo de '
+                                  f'compra ({pesos(costo)}). Este producto se vende sin ganancia.')
+
+
+@login_required
+def productos(request):
+    """Lista de productos. Los costos y márgenes solo los ve el administrador."""
+    perfil = _perfil(request)
+    es_admin = perfil.rol == 'ADMIN'
+    lista = list(productos_con_stock())
+    for p in lista:
+        if es_admin:
+            p.margen, p.margen_pct = margen(p.precio_actual, p.ultimo_costo)
+        else:
+            # El costo es información sensible: no se envía al navegador del cajero.
+            p.ultimo_costo = p.margen = p.margen_pct = None
+    return render(request, 'inventario/productos.html', {'productos': lista, 'es_admin': es_admin})
+
+
+@rol_requerido('ADMIN')
+def producto_nuevo(request):
+    perfil = _perfil(request)
+    form = ProductoForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        producto = guardar_producto(form, perfil, request.user.get_username())
+        messages.success(request, f'Producto {producto.sku} creado. Ahora puedes ingresar su primer lote.')
+        return redirect('productos')
+    return render(request, 'inventario/producto_form.html', {'form': form, 'perfil': perfil, 'nuevo': True})
+
+
+@rol_requerido('ADMIN')
+def producto_editar(request, sku):
+    perfil = _perfil(request)
+    producto = get_object_or_404(Producto, pk=sku)
+    form = ProductoForm(request.POST or None, instance=producto)
+    if request.method == 'POST' and form.is_valid():
+        if not form.has_changed():
+            messages.info(request, 'No hubo cambios que guardar.')
+            return redirect('productos')
+        producto = guardar_producto(form, perfil, request.user.get_username())
+        messages.success(request, f'Producto {producto.sku} actualizado.')
+        ultimo = producto.lotes.filter(costo_unitario__isnull=False).order_by('-fecha_ingreso', '-pk').first()
+        if ultimo:
+            _avisar_margen(request, producto.precio_actual, ultimo.costo_unitario)
+        return redirect('productos')
+    return render(request, 'inventario/producto_form.html',
+                  {'form': form, 'perfil': perfil, 'nuevo': False, 'producto': producto})

@@ -39,6 +39,9 @@ class Producto(models.Model):
     # El stock total es la suma de las cantidades de sus lotes; se actualiza
     # solo al ingresar lotes y registrar movimientos.
     stock_total = models.IntegerField(default=0, validators=[MinValueValidator(0)])
+    # Fase 4: un producto no se borra (tiene historial); se desactiva.
+    # Un producto desactivado no se vende ni recibe lotes nuevos.
+    activo = models.BooleanField(default=True)
 
     def __str__(self):
         return f"[{self.sku}] {self.nombre}"
@@ -58,6 +61,12 @@ class Lote(models.Model):
     fecha_vencimiento = models.DateField()
     cantidad = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     fecha_ingreso = models.DateTimeField(auto_now_add=True)
+    # Fase 4: costo de compra por unidad de este lote. Es opcional en la base
+    # de datos para no alterar los lotes antiguos, pero el formulario lo exige.
+    costo_unitario = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(Decimal('0.01'))],
+    )
 
     class Meta:
         unique_together = ('producto', 'codigo_lote')
@@ -93,6 +102,11 @@ class Lote(models.Model):
                 and self.fecha_vencimiento < timezone.localdate():
             raise ValidationError(
                 {'fecha_vencimiento': 'No se puede ingresar un lote que ya está vencido.'}
+            )
+        # Solo al crear: un producto desactivado no recibe mercadería nueva.
+        if self.pk is None and self.producto_id and not self.producto.activo:
+            raise ValidationError(
+                {'producto': 'El producto está desactivado y no puede recibir lotes nuevos.'}
             )
 
     def save(self, *args, **kwargs):

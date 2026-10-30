@@ -1,0 +1,30 @@
+{% extends 'inventario/base.html' %}
+{% block titulo %}{% if nuevo %}Crear producto{% else %}Editar producto{% endif %}{% endblock %}
+{% block contenido %}
+  {% if nuevo %}
+    <h1>Crear producto</h1>
+    <p class="bajada">El stock parte en cero y sube al ingresar lotes. El SKU no se puede cambiar después.</p>
+  {% else %}
+    <h1>Editar {{ producto.nombre }}</h1>
+    <p class="bajada">SKU <strong>{{ producto.sku }}</strong>. Cada cambio de precio, nombre o estado queda en la auditoría.
+      Para dejar de vender un producto, desactívalo: no se borra, porque tiene historial.</p>
+  {% endif %}
+  <p class="quien">Registrado por <strong>{{ perfil.nombre }}</strong> ({{ perfil.get_rol_display }})</p>
+  <form class="panel" method="post" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="error" role="alert">{% for e in form.non_field_errors %}{{ e }} {% endfor %}</div>{% endif %}
+    {% for campo in form %}
+      {% if campo.name == 'activo' %}
+        <div class="campo"><label class="check">{{ campo }} {{ campo.label }}</label>{{ campo.errors }}</div>
+      {% else %}
+        <div class="campo">
+          <label for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+          {{ campo }}
+          {{ campo.errors }}
+        </div>
+      {% endif %}
+    {% endfor %}
+    <button class="boton" type="submit">{% if nuevo %}Crear producto{% else %}Guardar cambios{% endif %}</button>
+    <a class="boton-sec" href="{% url 'productos' %}">Cancelar</a>
+  </form>
+{% endblock %}
