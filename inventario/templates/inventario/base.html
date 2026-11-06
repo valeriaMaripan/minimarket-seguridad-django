@@ -38,9 +38,15 @@
     .menu a:hover { color: var(--blanco); }
     .menu a.activo { color: var(--blanco); border-bottom-color: var(--blanco); }
     .menu .solo-admin { margin-left: auto; }
+    .si { color: var(--vigente); font-weight: 600; }
+    .no { color: var(--tinta-suave); }
+    h2 { font-family: var(--rotulo); font-size: 1.35rem; margin: 2rem 0 .5rem; }
+    .boton-chico { background: var(--blanco); color: var(--estante); border: 1px solid var(--estante); border-radius: 6px; padding: .25rem .7rem; font: 600 .9rem var(--rotulo); cursor: pointer; }
     .sesion { display: flex; align-items: center; gap: .9rem; font-size: .92rem; padding: .8rem 0 .4rem; }
     .sesion .rol { background: rgba(255,255,255,.12); padding: .1rem .55rem; border-radius: 4px; font-family: var(--rotulo); }
     .sesion button { background: none; border: 1px solid rgba(255,255,255,.45); color: var(--blanco); border-radius: 6px; padding: .3rem .7rem; font: inherit; cursor: pointer; }
+    .enlace-sesion { color: #d6e6df; }
+    .enlace-sesion:hover { color: var(--blanco); }
     .sesion button:hover { background: rgba(255,255,255,.1); }
 
     main { max-width: 1080px; margin: 2rem auto 3rem; padding: 0 1rem; }
@@ -120,6 +126,7 @@
         <div class="sesion">
           <span>{{ user.perfil.nombre|default:user.get_username }}</span>
           {% if user.perfil %}<span class="rol">{{ user.perfil.get_rol_display }}</span>{% endif %}
+          <a class="enlace-sesion" href="{% url 'cambiar_contrasena' %}">Cambiar contraseña</a>
           <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Cerrar sesión</button></form>
         </div>
       {% endif %}
@@ -129,13 +136,15 @@
         {% with actual=request.resolver_match.url_name %}
         <nav class="menu" aria-label="Menú principal">
           <a href="{% url 'lotes' %}" {% if actual == 'lotes' %}class="activo" aria-current="page"{% endif %}>Inventario</a>
-          <a href="{% url 'pedido_nuevo' %}" {% if actual == 'pedido_nuevo' %}class="activo" aria-current="page"{% endif %}>Nuevo pedido</a>
-          <a href="{% url 'movimiento_nuevo' %}" {% if actual == 'movimiento_nuevo' %}class="activo" aria-current="page"{% endif %}>Registrar movimiento</a>
+          {% if puede.registrar_pedido %}<a href="{% url 'pedido_nuevo' %}" {% if actual == 'pedido_nuevo' %}class="activo" aria-current="page"{% endif %}>Nuevo pedido</a>{% endif %}
+          {% if puede.registrar_salida %}<a href="{% url 'movimiento_nuevo' %}" {% if actual == 'movimiento_nuevo' %}class="activo" aria-current="page"{% endif %}>Registrar movimiento</a>{% endif %}
           <a href="{% url 'movimientos' %}" {% if actual == 'movimientos' %}class="activo" aria-current="page"{% endif %}>Historial</a>
           <a href="{% url 'productos' %}" {% if actual == 'productos' or actual == 'producto_nuevo' or actual == 'producto_editar' %}class="activo" aria-current="page"{% endif %}>Productos</a>
-          {% if user.perfil.rol == 'ADMIN' %}
-            <a class="solo-admin{% if actual == 'lote_nuevo' %} activo{% endif %}" href="{% url 'lote_nuevo' %}">Ingresar lote</a>
-            <a class="{% if actual == 'auditoria' %}activo{% endif %}" href="{% url 'auditoria' %}">Auditoría</a>
+          {% if puede.ingresar_lote or puede.ver_auditoria or puede.ver_seguridad %}
+            <span class="solo-admin" aria-hidden="true"></span>
+            {% if puede.ingresar_lote %}<a class="{% if actual == 'lote_nuevo' %}activo{% endif %}" href="{% url 'lote_nuevo' %}">Ingresar lote</a>{% endif %}
+            {% if puede.ver_auditoria %}<a class="{% if actual == 'auditoria' %}activo{% endif %}" href="{% url 'auditoria' %}">Auditoría</a>{% endif %}
+            {% if puede.ver_seguridad %}<a class="{% if actual == 'seguridad' %}activo{% endif %}" href="{% url 'seguridad' %}">Seguridad</a>{% endif %}
           {% endif %}
         </nav>
         {% endwith %}

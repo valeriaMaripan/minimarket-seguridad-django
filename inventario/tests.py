@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Lote, Movimiento, Pedido, Producto, RegistroAuditoria, Usuario
+from .models import IntentoAcceso, Lote, Movimiento, Pedido, Producto, RegistroAuditoria, Usuario
 from .servicios import StockInsuficiente, registrar_pedido
 
 
@@ -557,3 +557,224 @@ class ProductosYCostos(BaseDatos):
         from .servicios import productos_con_stock
         p = productos_con_stock().get(pk=self.producto.pk)
         self.assertEqual((p.stock_vendible, p.stock_vencido), (10, 50))
+
+
+
+class BloqueoDeAcceso(TestCase):
+    """Fase 5: bloqueo tras intentos fallidos de inicio de sesión."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.cuenta = User.objects.create_user('carlos', password='Cajero2026seguro')
+        self.otra = User.objects.create_user('ana', password='Admin2026seguro')
+        self.cajero = Usuario.objects.create(nombre='Carlos', rol='CAJERO', cuenta=self.cuenta)
+        self.admin = Usuario.objects.create(nombre='Ana', rol='ADMIN', cuenta=self.otra)
+
+    def entrar(self, usuario='carlos', clave='incorrecta', ip='10.0.0.5'):
+        return self.client.post(reverse('login'), {'username': usuario, 'password': clave},
+                                REMOTE_ADDR=ip)
+
+    def fallar(self, veces, **kw):
+        for _ in range(veces):
+            self.entrar(**kw)
+
+    def test_cinco_fallos_bloquean_aunque_luego_acierte(self):
+        self.fallar(5)
+        r = self.entrar(clave='Cajero2026seguro')
+        self.assertEqual(r.status_code, 200)  # no entra: vuelve al formulario
+        self.assertContains(r, 'Demasiados intentos fallidos')
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_cuatro_fallos_aun_permiten_entrar_y_reinician_la_cuenta(self):
+        self.fallar(4)
+        r = self.entrar(clave='Cajero2026seguro')
+        self.assertRedirects(r, reverse('lotes'))
+        self.client.logout()
+        self.fallar(4)  # tras un éxito el conteo vuelve a cero
+        self.assertRedirects(self.entrar(clave='Cajero2026seguro'), reverse('lotes'))
+
+    def test_el_bloqueo_de_un_usuario_no_afecta_a_otro(self):
+        self.fallar(5)
+        r = self.entrar(usuario='ana', clave='Admin2026seguro', ip='10.0.0.6')
+        self.assertRedirects(r, reverse('lotes'))
+
+    def test_el_bloqueo_vence_a_los_15_minutos(self):
+        self.fallar(5)
+        hace = timezone.now() - timedelta(minutes=16)
+        IntentoAcceso.objects.update(fecha=hace)  # simula el paso del tiempo
+        self.assertRedirects(self.entrar(clave='Cajero2026seguro'), reverse('lotes'))
+
+    def test_usuario_inexistente_recibe_el_mismo_trato(self):
+        # No se revela si la cuenta existe: también se bloquea con el mismo mensaje.
+        self.fallar(5, usuario='noexiste')
+        r = self.entrar(usuario='noexiste')
+        self.assertContains(r, 'Demasiados intentos fallidos')
+
+    def test_mayusculas_no_esquivan_el_bloqueo(self):
+        for nombre in ('carlos', 'Carlos', 'CARLOS', ' carlos', 'cArLoS'):
+            self.entrar(usuario=nombre)
+        self.assertContains(self.entrar(clave='Cajero2026seguro'), 'Demasiados intentos fallidos')
+
+    def test_un_equipo_que_prueba_muchas_cuentas_se_bloquea(self):
+        for i in range(20):
+            self.entrar(usuario=f'usuario{i}', ip='10.9.9.9')
+        r = self.entrar(usuario='carlos', clave='Cajero2026seguro', ip='10.9.9.9')
+        self.assertContains(r, 'Demasiados intentos fallidos')
+        # Desde otro equipo la cuenta sigue funcionando.
+        self.assertRedirects(self.entrar(clave='Cajero2026seguro', ip='10.0.0.7'), reverse('lotes'))
+
+    def test_el_bloqueo_queda_una_sola_vez_en_la_auditoria(self):
+        self.fallar(8)
+        self.assertEqual(RegistroAuditoria.objects.filter(accion='CUENTA_BLOQUEADA').count(), 1)
+        reg = RegistroAuditoria.objects.get(accion='CUENTA_BLOQUEADA')
+        self.assertEqual(reg.realizado_por, 'sistema')
+        self.assertIn('10.0.0.5', reg.valor_nuevo)
+
+    def test_cada_intento_queda_registrado_sin_la_contrasena(self):
+        self.entrar()
+        self.entrar(clave='Cajero2026seguro')
+        resultados = list(IntentoAcceso.objects.order_by('pk').values_list('usuario', 'ip', 'resultado'))
+        self.assertEqual(resultados, [('carlos', '10.0.0.5', 'FALLIDO'), ('carlos', '10.0.0.5', 'EXITOSO')])
+        self.assertFalse(IntentoAcceso.objects.filter(usuario__icontains='incorrecta').exists())
+
+    def test_el_panel_de_django_tambien_bloquea(self):
+        User = get_user_model()
+        User.objects.create_superuser('jefe', password='Jefe2026seguro')
+        for _ in range(5):
+            self.client.post('/admin/login/', {'username': 'jefe', 'password': 'mal'}, REMOTE_ADDR='10.0.0.8')
+        r = self.client.post('/admin/login/', {'username': 'jefe', 'password': 'Jefe2026seguro'},
+                             REMOTE_ADDR='10.0.0.8')
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_admin_desbloquea_y_queda_auditado(self):
+        self.fallar(5)
+        self.client.force_login(self.otra)
+        r = self.client.get(reverse('seguridad'))
+        self.assertContains(r, 'Desbloquear')
+        self.client.post(reverse('desbloquear'), {'usuario': 'carlos'})
+        reg = RegistroAuditoria.objects.get(accion='CUENTA_DESBLOQUEADA')
+        self.assertEqual((reg.usuario, reg.realizado_por), (self.admin, 'ana'))
+        self.client.logout()
+        self.assertRedirects(self.entrar(clave='Cajero2026seguro'), reverse('lotes'))
+
+    def test_desbloquear_exige_post_y_permiso(self):
+        self.fallar(5)
+        self.client.force_login(self.otra)
+        self.assertEqual(self.client.get(reverse('desbloquear') + '?usuario=carlos').status_code, 405)
+        self.client.force_login(self.cuenta)
+        self.assertEqual(self.client.post(reverse('desbloquear'), {'usuario': 'carlos'}).status_code, 403)
+        self.assertFalse(RegistroAuditoria.objects.filter(accion='CUENTA_DESBLOQUEADA').exists())
+
+    def test_intentos_no_se_modifican_ni_borran(self):
+        self.entrar()
+        intento = IntentoAcceso.objects.get()
+        intento.resultado = 'EXITOSO'
+        with self.assertRaises(PermissionError):
+            intento.save()
+        with self.assertRaises(PermissionError):
+            intento.delete()
+
+
+class ContrasenasYSesiones(TestCase):
+    """Fase 5: política de contraseñas, cambio de contraseña y expiración de la sesión."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.cuenta = User.objects.create_user('carlos', password='Cajero2026seguro')
+        Usuario.objects.create(nombre='Carlos', rol='CAJERO', cuenta=self.cuenta)
+
+    def cambiar(self, nueva):
+        return self.client.post(reverse('cambiar_contrasena'), {
+            'old_password': 'Cajero2026seguro', 'new_password1': nueva, 'new_password2': nueva})
+
+    def test_cambiar_contrasena_exige_login(self):
+        r = self.client.get(reverse('cambiar_contrasena'))
+        self.assertEqual(r.status_code, 302)
+        self.assertIn('/cuentas/login/', r['Location'])
+
+    def test_contrasenas_debiles_se_rechazan(self):
+        self.client.force_login(self.cuenta)
+        for debil in ('Corta1', '12345678901', 'solamenteletras', 'password123', 'carlos2026x'):
+            r = self.cambiar(debil)
+            self.assertEqual(r.status_code, 200, debil)
+        self.cuenta.refresh_from_db()
+        self.assertTrue(self.cuenta.check_password('Cajero2026seguro'))
+
+    def test_contrasena_segura_se_acepta_y_se_audita_sin_guardarla(self):
+        self.client.force_login(self.cuenta)
+        r = self.cambiar('Góndola7Verde2026')
+        self.assertRedirects(r, reverse('lotes'))
+        self.cuenta.refresh_from_db()
+        self.assertTrue(self.cuenta.check_password('Góndola7Verde2026'))
+        reg = RegistroAuditoria.objects.get(accion='CAMBIO_CONTRASENA')
+        self.assertNotIn('Góndola7Verde2026', reg.valor_nuevo + reg.valor_anterior)
+
+    def test_la_contrasena_se_guarda_cifrada(self):
+        self.assertFalse(self.cuenta.password.startswith('Cajero'))
+        self.assertTrue(self.cuenta.password.startswith(('pbkdf2_', 'argon2', 'scrypt')))
+
+    def test_la_sesion_expira_por_inactividad(self):
+        from django.conf import settings
+        self.assertEqual(settings.SESSION_COOKIE_AGE, 15 * 60)
+        self.assertTrue(settings.SESSION_SAVE_EVERY_REQUEST)
+        self.assertTrue(settings.SESSION_EXPIRE_AT_BROWSER_CLOSE)
+        self.assertTrue(settings.SESSION_COOKIE_HTTPONLY)
+
+    def test_la_clave_secreta_no_esta_en_el_codigo(self):
+        from pathlib import Path
+        from django.conf import settings
+        self.assertFalse(settings.SECRET_KEY.startswith('django-insecure'))
+        codigo = (Path(settings.BASE_DIR) / 'core' / 'settings.py').read_text(encoding='utf-8')
+        self.assertNotIn(settings.SECRET_KEY, codigo)
+        self.assertNotIn('django-insecure-', codigo)
+
+
+class RolDuenoYMatriz(BaseDatos):
+    """Fase 5: el Dueño supervisa todo, pero no opera (separación de funciones)."""
+
+    def setUp(self):
+        super().setUp()
+        User = get_user_model()
+        self.cuenta_dueno = User.objects.create_user('dueno', password='Dueno2026seguro')
+        self.cuenta_cajero = User.objects.create_user('carlos', password='Cajero2026seguro')
+        self.dueno = Usuario.objects.create(nombre='Don Pedro', rol='DUENO', cuenta=self.cuenta_dueno)
+        self.cajero.cuenta = self.cuenta_cajero
+        self.cajero.save()
+        Lote.objects.create(producto=self.producto, codigo_lote='L-C', cantidad=5,
+                            fecha_vencimiento=hoy() + timedelta(days=90), costo_unitario=Decimal('1000'))
+
+    def test_dueno_ve_costos_auditoria_y_seguridad(self):
+        self.client.force_login(self.cuenta_dueno)
+        self.assertContains(self.client.get(reverse('productos')), 'Margen')
+        for nombre in ('auditoria', 'seguridad', 'lotes', 'movimientos'):
+            self.assertEqual(self.client.get(reverse(nombre)).status_code, 200, nombre)
+
+    def test_dueno_no_vende_ni_mueve_stock(self):
+        self.client.force_login(self.cuenta_dueno)
+        for nombre in ('pedido_nuevo', 'movimiento_nuevo', 'lote_nuevo', 'producto_nuevo'):
+            self.assertEqual(self.client.get(reverse(nombre)).status_code, 403, nombre)
+        r = self.client.post(reverse('movimiento_nuevo'),
+                             {'lote': self.lote.pk, 'tipo': 'SALIDA', 'cantidad': 1})
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(Movimiento.objects.count(), 0)
+
+    def test_menu_del_dueno(self):
+        self.client.force_login(self.cuenta_dueno)
+        r = self.client.get(reverse('lotes'))
+        self.assertContains(r, 'Seguridad')
+        self.assertContains(r, 'Auditoría')
+        self.assertNotContains(r, 'Nuevo pedido')
+        self.assertNotContains(r, 'Ingresar lote')
+
+    def test_cajero_no_entra_a_seguridad(self):
+        self.client.force_login(self.cuenta_cajero)
+        self.assertEqual(self.client.get(reverse('seguridad')).status_code, 403)
+        self.assertNotContains(self.client.get(reverse('lotes')), 'Seguridad')
+
+    def test_la_matriz_de_la_pagina_es_la_que_usa_el_sistema(self):
+        from .permisos import PERMISOS
+        self.client.force_login(self.cuenta_dueno)
+        r = self.client.get(reverse('seguridad'))
+        for descripcion, _ in PERMISOS.values():
+            self.assertContains(r, descripcion)

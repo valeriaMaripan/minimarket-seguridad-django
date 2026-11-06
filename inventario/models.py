@@ -16,6 +16,8 @@ class Usuario(models.Model):
     ROLES = (
         ('ADMIN', 'Administrador'),
         ('CAJERO', 'Cajero'),
+        # Fase 5: supervisa todo, pero no opera (separación de funciones).
+        ('DUENO', 'Dueño'),
     )
     nombre = models.CharField(max_length=100)
     rol = models.CharField(max_length=50, choices=ROLES, default='CAJERO')
@@ -243,3 +245,35 @@ class RegistroAuditoria(models.Model):
 
     def __str__(self):
         return f"{self.fecha:%Y-%m-%d %H:%M} | {self.realizado_por} | {self.accion}"
+
+
+class IntentoAcceso(models.Model):
+    """Fase 5: cada intento de inicio de sesión, exitoso o fallido.
+
+    Sirve para bloquear el acceso tras varios fallos seguidos y como registro
+    de quién intentó entrar y desde dónde. Es de solo adición.
+    """
+    RESULTADOS = (
+        ('FALLIDO', 'Fallido'),
+        ('EXITOSO', 'Exitoso'),
+        ('DESBLOQUEO', 'Desbloqueo manual'),
+    )
+    # Lo que se escribió como usuario (puede no existir), en minúsculas.
+    usuario = models.CharField(max_length=150, db_index=True)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    resultado = models.CharField(max_length=10, choices=RESULTADOS)
+    fecha = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-fecha', '-pk']
+
+    def __str__(self):
+        return f"{self.fecha:%Y-%m-%d %H:%M} | {self.usuario} | {self.resultado}"
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            raise PermissionError('Los intentos de acceso no se pueden modificar.')
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise PermissionError('Los intentos de acceso no se pueden eliminar.')

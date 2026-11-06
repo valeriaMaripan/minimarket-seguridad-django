@@ -1,9 +1,13 @@
 import re
 
 from django import forms
+from django.contrib.admin.forms import AdminAuthenticationForm
+from django.contrib.auth.forms import AuthenticationForm
 from django.core.exceptions import ValidationError
 
+from . import bloqueo
 from .models import Lote, Movimiento, Producto
+from .permisos import tiene_permiso
 
 
 class MovimientoForm(forms.ModelForm):
@@ -26,14 +30,14 @@ class MovimientoForm(forms.ModelForm):
         self.instance.usuario = usuario
         self.fields['lote'].queryset = Lote.objects.select_related('producto')
         self.fields['lote'].empty_label = 'Elige un lote'
-        if usuario.rol == 'CAJERO':
-            # Un cajero solo puede registrar ventas (salidas).
+        if not tiene_permiso(usuario, 'registrar_ingreso'):
+            # Sin permiso de ingresos y mermas (cajero): solo ventas (salidas).
             self.fields['tipo'].choices = [('SALIDA', 'Salida / Venta')]
 
     def clean_tipo(self):
         tipo = self.cleaned_data['tipo']
         # Se vuelve a verificar en el servidor aunque el formulario ya lo limite.
-        if self.usuario.rol == 'CAJERO' and tipo != 'SALIDA':
+        if tipo != 'SALIDA' and not tiene_permiso(self.usuario, 'registrar_ingreso'):
             raise ValidationError('Tu rol solo permite registrar salidas.')
         return tipo
 
@@ -120,3 +124,40 @@ class PedidoItemForm(forms.Form):
 
 
 PedidoItemFormSet = forms.formset_factory(PedidoItemForm, extra=4)
+
+
+# ---------------------------------------------------------------------------
+# Fase 5: inicio de sesión con bloqueo por intentos fallidos
+# ---------------------------------------------------------------------------
+
+class BloqueoMixin:
+    """Revisa el bloqueo ANTES de comprobar la contraseña y registra cada intento."""
+
+    bloqueado = False  # la plantilla lo usa para mostrar el mensaje correcto
+
+    def _bloquear(self):
+        self.bloqueado = True
+        raise ValidationError(bloqueo.mensaje_bloqueo(), code='bloqueado')
+
+    def clean(self):
+        usuario = self.data.get('username', '')
+        ip = bloqueo.ip_cliente(self.request)
+        if bloqueo.esta_bloqueado(usuario, ip):
+            self._bloquear()
+        try:
+            datos = super().clean()
+        except ValidationError:
+            bloqueo.registrar_intento(usuario, ip, exitoso=False)
+            if bloqueo.esta_bloqueado(usuario, ip):
+                self._bloquear()
+            raise
+        bloqueo.registrar_intento(usuario, ip, exitoso=True)
+        return datos
+
+
+class FormularioAcceso(BloqueoMixin, AuthenticationForm):
+    """Inicio de sesión de la aplicación."""
+
+
+class FormularioAccesoAdmin(BloqueoMixin, AdminAuthenticationForm):
+    """Inicio de sesión del panel de Django: mismas reglas, para no dejar una puerta trasera."""

@@ -12,15 +12,19 @@ Class-based views
     2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
 Including another URLconf
     1. Import the include() function: from django.urls import include, path
+
+from inventario.forms import FormularioAcceso
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import include, path
 
+from inventario.forms import FormularioAcceso
+
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('cuentas/login/', auth_views.LoginView.as_view(), name='login'),
+    path('cuentas/login/', auth_views.LoginView.as_view(authentication_form=FormularioAcceso), name='login'),
     path('cuentas/logout/', auth_views.LogoutView.as_view(), name='logout'),
     path('', include('inventario.urls')),
 ]

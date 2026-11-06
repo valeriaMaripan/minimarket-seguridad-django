@@ -1,12 +1,20 @@
 from functools import wraps
 
+from django.conf import settings
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.shortcuts import get_object_or_404, redirect, render
 
+from django.contrib.auth.views import PasswordChangeView
+from django.urls import reverse_lazy
+from django.views.decorators.http import require_POST
+
+from . import bloqueo
 from .forms import LoteForm, MovimientoForm, PedidoItemFormSet, ProductoForm
-from .models import Lote, Movimiento, Producto, RegistroAuditoria
+from .models import IntentoAcceso, Lote, Movimiento, Producto, RegistroAuditoria
+from .permisos import ROLES_ORDEN, exigir, matriz, tiene_permiso
 from .templatetags.formato import pesos
 from .servicios import (StockInsuficiente, guardar_producto, margen, productos_con_stock,
                         registrar_pedido)
@@ -21,27 +29,24 @@ def _perfil(request):
     return perfil
 
 
-def rol_requerido(*roles):
-    """Solo deja pasar a quien haya iniciado sesión y tenga uno de los roles.
+def permiso_requerido(accion):
+    """Solo deja pasar a quien inició sesión y tiene el permiso en la matriz (permisos.py).
 
-    La comprobación se hace en el servidor: aunque un cajero escriba la
-    dirección a mano, recibe 403 y no se ejecuta nada.
+    La comprobación se hace en el servidor: aunque alguien escriba la dirección
+    a mano o envíe el formulario directamente, recibe 403 y no se ejecuta nada.
     """
     def decorador(vista):
         @wraps(vista)
         def envoltura(request, *args, **kwargs):
-            perfil = _perfil(request)
-            if perfil.rol not in roles:
-                raise PermissionDenied('Tu rol no tiene acceso a esta sección.')
+            exigir(_perfil(request), accion)
             return vista(request, *args, **kwargs)
         return login_required(envoltura)
     return decorador
 
 
-@login_required
+@permiso_requerido('ver_inventario')
 def lotes(request):
     """Inventario por lotes, del que vence primero al que vence después."""
-    _perfil(request)
     lista = list(Lote.objects.select_related('producto').order_by('fecha_vencimiento'))
     resumen = {'VIGENTE': 0, 'POR_VENCER': 0, 'VENCIDO': 0}
     for lote in lista:
@@ -49,7 +54,7 @@ def lotes(request):
     return render(request, 'inventario/lotes.html', {'lotes': lista, 'resumen': resumen})
 
 
-@login_required
+@permiso_requerido('registrar_salida')
 def movimiento_nuevo(request):
     perfil = _perfil(request)
     form = MovimientoForm(request.POST or None, usuario=perfil)
@@ -65,15 +70,14 @@ def movimiento_nuevo(request):
     return render(request, 'inventario/movimiento_form.html', {'form': form, 'perfil': perfil})
 
 
-@login_required
+@permiso_requerido('ver_inventario')
 def movimientos(request):
     """Historial de movimientos (solo lectura)."""
-    _perfil(request)
     lista = Movimiento.objects.select_related('lote__producto', 'usuario').order_by('-fecha')[:100]
     return render(request, 'inventario/movimientos.html', {'movimientos': lista})
 
 
-@login_required
+@permiso_requerido('registrar_pedido')
 def pedido_nuevo(request):
     """Pedido de venta con varios productos. Si falta stock, se rechaza completo."""
     perfil = _perfil(request)
@@ -109,7 +113,7 @@ def pedido_nuevo(request):
                                                            'error_pedido': error_pedido})
 
 
-@rol_requerido('ADMIN')
+@permiso_requerido('ingresar_lote')
 def lote_nuevo(request):
     """Ingreso de mercadería (lote nuevo). Solo administradores."""
     perfil = _perfil(request)
@@ -128,7 +132,7 @@ def lote_nuevo(request):
     return render(request, 'inventario/lote_form.html', {'form': form, 'perfil': perfil})
 
 
-@rol_requerido('ADMIN')
+@permiso_requerido('ver_auditoria')
 def auditoria(request):
     """Registro de auditoría (solo lectura). Solo administradores."""
     lista = RegistroAuditoria.objects.select_related('producto', 'usuario').order_by('-fecha', '-pk')[:100]
@@ -146,22 +150,24 @@ def _avisar_margen(request, precio, costo):
                                   f'compra ({pesos(costo)}). Este producto se vende sin ganancia.')
 
 
-@login_required
+@permiso_requerido('ver_inventario')
 def productos(request):
-    """Lista de productos. Los costos y márgenes solo los ve el administrador."""
+    """Lista de productos. Los costos y márgenes solo los ve quien tiene 'ver_costos'."""
     perfil = _perfil(request)
-    es_admin = perfil.rol == 'ADMIN'
+    ve_costos = tiene_permiso(perfil, 'ver_costos')
     lista = list(productos_con_stock())
     for p in lista:
-        if es_admin:
+        if ve_costos:
             p.margen, p.margen_pct = margen(p.precio_actual, p.ultimo_costo)
         else:
             # El costo es información sensible: no se envía al navegador del cajero.
             p.ultimo_costo = p.margen = p.margen_pct = None
-    return render(request, 'inventario/productos.html', {'productos': lista, 'es_admin': es_admin})
+    return render(request, 'inventario/productos.html',
+                  {'productos': lista, 've_costos': ve_costos,
+                   'gestiona': tiene_permiso(perfil, 'gestionar_productos')})
 
 
-@rol_requerido('ADMIN')
+@permiso_requerido('gestionar_productos')
 def producto_nuevo(request):
     perfil = _perfil(request)
     form = ProductoForm(request.POST or None)
@@ -172,7 +178,7 @@ def producto_nuevo(request):
     return render(request, 'inventario/producto_form.html', {'form': form, 'perfil': perfil, 'nuevo': True})
 
 
-@rol_requerido('ADMIN')
+@permiso_requerido('gestionar_productos')
 def producto_editar(request, sku):
     perfil = _perfil(request)
     producto = get_object_or_404(Producto, pk=sku)
@@ -189,3 +195,53 @@ def producto_editar(request, sku):
         return redirect('productos')
     return render(request, 'inventario/producto_form.html',
                   {'form': form, 'perfil': perfil, 'nuevo': False, 'producto': producto})
+
+
+# ---------------------------------------------------------------------------
+# Fase 5: seguridad de accesos
+# ---------------------------------------------------------------------------
+
+@permiso_requerido('ver_seguridad')
+def seguridad(request):
+    """Bloqueos activos, últimos intentos de acceso y matriz de permisos."""
+    usuarios, ips = bloqueo.bloqueos_activos()
+    return render(request, 'inventario/seguridad.html', {
+        'usuarios_bloqueados': usuarios, 'ips_bloqueadas': ips,
+        'intentos': IntentoAcceso.objects.all()[:50],
+        'matriz': matriz(), 'roles': [nombre for _, nombre in ROLES_ORDEN],
+        'limite_usuario': settings.BLOQUEO_INTENTOS_USUARIO,
+        'limite_ip': settings.BLOQUEO_INTENTOS_IP, 'minutos': settings.BLOQUEO_MINUTOS,
+    })
+
+
+@require_POST
+@permiso_requerido('ver_seguridad')
+def desbloquear(request):
+    """Desbloqueo manual (solo POST con token CSRF), auditado."""
+    perfil = _perfil(request)
+    usuario, ip = request.POST.get('usuario', '').strip(), request.POST.get('ip', '').strip()
+    activos_usuarios, activos_ips = bloqueo.bloqueos_activos()
+    if usuario and bloqueo.normalizar(usuario) in activos_usuarios:
+        bloqueo.desbloquear(usuario=usuario, perfil=perfil, cuenta=request.user.get_username())
+        messages.success(request, f'Se desbloqueó el usuario {bloqueo.normalizar(usuario)}.')
+    elif ip and ip in activos_ips:
+        bloqueo.desbloquear(ip=ip, perfil=perfil, cuenta=request.user.get_username())
+        messages.success(request, f'Se desbloqueó el equipo {ip}.')
+    else:
+        messages.info(request, 'No hay un bloqueo activo con esos datos.')
+    return redirect('seguridad')
+
+
+class CambiarContrasena(PasswordChangeView):
+    """Cambio de contraseña con la política de Fase 5 (validadores de settings), auditado."""
+    template_name = 'registration/cambiar_contrasena.html'
+    success_url = reverse_lazy('lotes')
+
+    def form_valid(self, form):
+        respuesta = super().form_valid(form)  # mantiene la sesión activa tras el cambio
+        RegistroAuditoria.objects.create(
+            usuario=getattr(self.request.user, 'perfil', None),
+            realizado_por=self.request.user.get_username(), accion='CAMBIO_CONTRASENA',
+            valor_nuevo='contraseña actualizada')  # nunca se guarda la contraseña
+        messages.success(self.request, 'Tu contraseña se cambió correctamente.')
+        return respuesta

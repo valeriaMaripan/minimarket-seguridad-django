@@ -1,0 +1,49 @@
+{% extends 'inventario/base.html' %}
+{% block titulo %}Seguridad{% endblock %}
+{% block contenido %}
+  <h1>Seguridad de accesos</h1>
+  <p class="bajada">Un usuario se bloquea tras {{ limite_usuario }} intentos fallidos seguidos, y un equipo tras {{ limite_ip }}, durante {{ minutos }} minutos. Cada desbloqueo queda en la auditoría.</p>
+
+  <h2>Bloqueos activos</h2>
+  {% if usuarios_bloqueados or ips_bloqueadas %}
+    <div class="tabla"><table>
+      <thead><tr><th>Bloqueado</th><th>Tipo</th><th><span class="visually-hidden">Acción</span></th></tr></thead>
+      <tbody>
+      {% for u in usuarios_bloqueados %}
+        <tr><td>{{ u }}</td><td>Usuario</td>
+          <td><form method="post" action="{% url 'desbloquear' %}">{% csrf_token %}<input type="hidden" name="usuario" value="{{ u }}"><button class="boton-chico" type="submit">Desbloquear</button></form></td></tr>
+      {% endfor %}
+      {% for ip in ips_bloqueadas %}
+        <tr><td>{{ ip }}</td><td>Equipo (IP)</td>
+          <td><form method="post" action="{% url 'desbloquear' %}">{% csrf_token %}<input type="hidden" name="ip" value="{{ ip }}"><button class="boton-chico" type="submit">Desbloquear</button></form></td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}
+    <p>No hay usuarios ni equipos bloqueados en este momento.</p>
+  {% endif %}
+
+  <h2>Matriz de permisos</h2>
+  <p class="bajada">Generada desde la misma configuración que usa el sistema para autorizar cada acción. El Dueño supervisa, pero no vende ni mueve stock (separación de funciones).</p>
+  <div class="tabla"><table>
+    <thead><tr><th>Acción</th>{% for r in roles %}<th>{{ r }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for fila in matriz %}
+      <tr><td>{{ fila.descripcion }}</td>{% for permitido in fila.roles %}<td>{% if permitido %}<span class="si">Sí</span>{% else %}<span class="no">No</span>{% endif %}</td>{% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+
+  <h2>Últimos intentos de acceso</h2>
+  <div class="tabla"><table>
+    <thead><tr><th>Fecha</th><th>Usuario escrito</th><th>IP</th><th>Resultado</th></tr></thead>
+    <tbody>
+    {% for i in intentos %}
+      <tr><td>{{ i.fecha|date:"d/m/Y H:i" }}</td><td>{{ i.usuario|default:"—" }}</td><td class="sutil">{{ i.ip|default:"—" }}</td>
+        <td>{% if i.resultado == 'FALLIDO' %}<span class="negativo">{{ i.get_resultado_display }}</span>{% else %}{{ i.get_resultado_display }}{% endif %}</td></tr>
+    {% empty %}
+      <tr><td colspan="4">Aún no hay intentos registrados.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+{% endblock %}

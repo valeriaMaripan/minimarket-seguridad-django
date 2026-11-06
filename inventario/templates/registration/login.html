@@ -6,7 +6,7 @@
     <p class="bajada">Control de inventario por lotes y vencimientos. Usa la cuenta que te entregó el administrador.</p>
     <form class="panel" method="post">
       {% csrf_token %}
-      {% if form.non_field_errors %}<div class="error" role="alert">El usuario o la contraseña no son correctos. Revisa mayúsculas y vuelve a intentarlo.</div>{% endif %}
+      {% if form.non_field_errors %}<div class="error" role="alert">{% if form.bloqueado %}{{ form.non_field_errors.0 }}{% else %}El usuario o la contraseña no son correctos. Revisa mayúsculas y vuelve a intentarlo. Después de varios intentos fallidos el acceso se bloquea por unos minutos.{% endif %}</div>{% endif %}
       {% for campo in form %}
         <div class="campo"><label for="{{ campo.id_for_label }}">{{ campo.label }}</label>{{ campo }}{{ campo.errors }}</div>
       {% endfor %}

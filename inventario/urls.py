@@ -10,6 +10,9 @@ urlpatterns = [
     path('lotes/nuevo/', views.lote_nuevo, name='lote_nuevo'),
     path('auditoria/', views.auditoria, name='auditoria'),
     path('productos/', views.productos, name='productos'),
+    path('seguridad/', views.seguridad, name='seguridad'),
+    path('seguridad/desbloquear/', views.desbloquear, name='desbloquear'),
+    path('cuentas/contrasena/', views.CambiarContrasena.as_view(), name='cambiar_contrasena'),
     path('productos/nuevo/', views.producto_nuevo, name='producto_nuevo'),
     path('productos/<str:sku>/editar/', views.producto_editar, name='producto_editar'),
 ]

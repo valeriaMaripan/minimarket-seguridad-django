@@ -7,15 +7,15 @@
       <h1>Productos</h1>
       <p class="bajada">El stock vendible solo cuenta lotes vigentes. El stock vencido es lo que hay que retirar de la góndola.</p>
     </div>
-    {% if es_admin %}<a class="boton-sec" href="{% url 'producto_nuevo' %}">Crear producto</a>{% endif %}
+    {% if gestiona %}<a class="boton-sec" href="{% url 'producto_nuevo' %}">Crear producto</a>{% endif %}
   </div>
   <div class="tabla">
   <table>
     <thead><tr>
       <th>SKU</th><th>Producto</th><th class="num">Precio</th>
-      {% if es_admin %}<th class="num">Último costo</th><th class="num">Margen</th>{% endif %}
+      {% if ve_costos %}<th class="num">Último costo</th><th class="num">Margen</th>{% endif %}
       <th class="num">Vendible</th><th class="num">Vencido</th><th>Estado</th>
-      {% if es_admin %}<th><span class="visually-hidden">Acciones</span></th>{% endif %}
+      {% if gestiona %}<th><span class="visually-hidden">Acciones</span></th>{% endif %}
     </tr></thead>
     <tbody>
     {% for p in productos %}
@@ -23,20 +23,20 @@
         <td class="sutil">{{ p.sku }}</td>
         <td>{{ p.nombre }}</td>
         <td class="num">{{ p.precio_actual|pesos }}</td>
-        {% if es_admin %}
+        {% if ve_costos %}
           <td class="num">{% if p.ultimo_costo is not None %}{{ p.ultimo_costo|pesos }}{% else %}<span class="sutil">Sin costo</span>{% endif %}</td>
           <td class="num">{% if p.margen is not None %}<span{% if p.margen <= 0 %} class="negativo"{% endif %}>{{ p.margen|pesos }} ({{ p.margen_pct }}%)</span>{% else %}<span class="sutil">—</span>{% endif %}</td>
         {% endif %}
         <td class="num">{{ p.stock_vendible }}</td>
         <td class="num">{% if p.stock_vencido %}<span class="negativo">{{ p.stock_vencido }}</span>{% else %}0{% endif %}</td>
         <td>{% if p.activo %}Activo{% else %}Desactivado{% endif %}</td>
-        {% if es_admin %}<td><a href="{% url 'producto_editar' p.sku %}">Editar<span class="visually-hidden"> {{ p.nombre }}</span></a></td>{% endif %}
+        {% if gestiona %}<td><a href="{% url 'producto_editar' p.sku %}">Editar<span class="visually-hidden"> {{ p.nombre }}</span></a></td>{% endif %}
       </tr>
     {% empty %}
-      <tr><td colspan="9">Aún no hay productos.{% if es_admin %} Crea el primero con "Crear producto".{% endif %}</td></tr>
+      <tr><td colspan="9">Aún no hay productos.{% if gestiona %} Crea el primero con "Crear producto".{% endif %}</td></tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
-  {% if es_admin %}<p class="sutil">El margen usa el costo del lote ingresado más recientemente. Los lotes anteriores a la Fase 4 no tienen costo registrado.</p>{% endif %}
+  {% if ve_costos %}<p class="sutil">El margen usa el costo del lote ingresado más recientemente. Los lotes anteriores a la Fase 4 no tienen costo registrado.</p>{% endif %}
 {% endblock %}

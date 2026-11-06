@@ -1,0 +1,19 @@
+{% extends 'inventario/base.html' %}
+{% block titulo %}Cambiar contraseña{% endblock %}
+{% block contenido %}
+  <h1>Cambiar contraseña</h1>
+  <p class="bajada">Usa al menos 10 caracteres que combinen letras y números. No uses tu nombre de usuario, una contraseña común ni solo números.</p>
+  <form class="panel" method="post" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="error" role="alert">{% for e in form.non_field_errors %}{{ e }} {% endfor %}</div>{% endif %}
+    {% for campo in form %}
+      <div class="campo">
+        <label for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+        {{ campo }}
+        {{ campo.errors }}
+      </div>
+    {% endfor %}
+    <button class="boton" type="submit">Cambiar contraseña</button>
+    <a class="boton-sec" href="{% url 'lotes' %}">Cancelar</a>
+  </form>
+{% endblock %}

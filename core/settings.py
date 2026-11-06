@@ -12,20 +12,41 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 
 from pathlib import Path
 
+import environ
+from django.core.exceptions import ImproperlyConfigured
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
+# ---------------------------------------------------------------------------
+# Fase 5: secretos fuera del código (django-environ)
+# Los valores sensibles se leen del archivo .env, que NO se sube a GitHub.
+# Si falta una variable, el sistema no arranca en vez de usar un valor inseguro.
+# ---------------------------------------------------------------------------
+env = environ.Env(
+    DEBUG=(bool, False),  # apagado salvo que .env diga lo contrario
+    ALLOWED_HOSTS=(list, ['127.0.0.1', 'localhost']),
+    SESION_MINUTOS=(int, 15),
+)
+ARCHIVO_ENV = BASE_DIR / '.env'
+if ARCHIVO_ENV.exists():
+    environ.Env.read_env(ARCHIVO_ENV)
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-$#adsq-)q-3u!j5oa+vqym27@n&b-uoxh32k$i+gl^o4e9rf4m'
+try:
+    SECRET_KEY = env('SECRET_KEY')
+except ImproperlyConfigured:
+    raise ImproperlyConfigured(
+        'Falta SECRET_KEY. Crea el archivo .env con: python crear_env.py'
+    ) from None
+if SECRET_KEY.startswith('django-insecure') or len(SECRET_KEY) < 50:
+    raise ImproperlyConfigured(
+        'SECRET_KEY es insegura (demasiado corta o de ejemplo). Genera una nueva con: python crear_env.py'
+    )
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env('DEBUG')
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = env('ALLOWED_HOSTS')
 
 
 # Application definition
@@ -62,6 +83,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'inventario.permisos.contexto',
             ],
         },
     },
@@ -90,12 +112,16 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {'min_length': 10},  # Fase 5: mínimo 10 caracteres
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
     },
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+    {
+        'NAME': 'inventario.validadores.LetrasYNumerosValidator',
     },
 ]
 
@@ -132,3 +158,21 @@ MAILERS = {
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'lotes'
 LOGOUT_REDIRECT_URL = 'login'
+
+
+# ---------------------------------------------------------------------------
+# Fase 5: sesiones y bloqueo de acceso
+# ---------------------------------------------------------------------------
+# La sesión se cierra tras SESION_MINUTOS sin actividad (cada visita la renueva)
+# y también al cerrar el navegador, por si el computador del local queda abierto.
+SESSION_COOKIE_AGE = env('SESION_MINUTOS') * 60
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_COOKIE_HTTPONLY = True   # el JavaScript de la página no puede leer la cookie
+CSRF_COOKIE_HTTPONLY = True
+X_FRAME_OPTIONS = 'DENY'         # la página no se puede incrustar en otro sitio
+
+# Bloqueo por intentos fallidos de inicio de sesión
+BLOQUEO_INTENTOS_USUARIO = 5     # fallos seguidos con el mismo usuario
+BLOQUEO_INTENTOS_IP = 20         # fallos desde un mismo equipo, con cualquier usuario
+BLOQUEO_MINUTOS = 15
